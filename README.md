@@ -408,6 +408,7 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 ### Milestone 1 — Minimal MCP server
 
 - remote-capable MCP server
+- authentication (OAuth 2.1 + bearer token for dev)
 - health/status tool
 - basic schema validation
 - structured tool output convention
@@ -415,17 +416,19 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 ### Milestone 2 — Creative sprint workflow
 
 - client creation
-- brand kit creation
-- creative sprint creation
+- brand kit creation (full entity per ADR-0024)
+- creative sprint creation with budget pre-authorization
 - dashboard pack generation
 - manual asset registration
 
-### Milestone 3 — Persistence and auditability
+### Milestone 3 — Persistence, auditability, and performance learning
 
-- Supabase/Postgres schema
+- Supabase/Postgres schema with RLS
 - audit logs
 - asset references
-- approval records
+- sprint budget tracking and alerts
+- performance records (`record_performance` tool)
+- sprint initialization with performance context
 
 ### Milestone 4 — Provider adapters
 
@@ -436,12 +439,18 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 ### Milestone 5 — Production readiness
 
-- authentication
 - deployment
 - rate limits
 - secret management
-- job queue
+- job queue (Trigger.dev)
 - monitoring
+
+### Milestone 6 — Platform integrations (future)
+
+- Meta Marketing API integration for performance data
+- Google Ads API integration
+- TikTok Business API integration
+- automated brand kit enrichment from performance data
 
 ---
 
@@ -449,7 +458,7 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 All architecture decisions are documented as ADRs in [`docs/adr/`](docs/adr/README.md).
 
-The current ADR set covers 23 decisions, including language choice, remote server model, generation modes, security boundaries, persistence, provider adapters, cost controls, audit logging, authentication, schema migrations, job queue technology, adapter interface contract, and client data isolation.
+The current ADR set covers 25 decisions, including language choice, remote server model, generation modes, security boundaries, persistence, provider adapters, cost controls, sprint budget pre-authorization, audit logging, authentication, schema migrations, job queue technology, adapter interface contract, client data isolation, brand kit entity specification, and the performance feedback loop.
 
 When implementing new features or making structural changes, check the ADR index first. If a decision is not covered by an existing ADR, create one before implementing.
 

@@ -31,3 +31,5 @@ ADRs explain important decisions, the context behind them, alternatives consider
 | [0021](0021-job-queue-technology-selection.md) | Job queue technology selection | Accepted |
 | [0022](0022-provider-adapter-interface-contract.md) | Provider adapter interface contract | Accepted |
 | [0023](0023-multitenancy-and-client-data-isolation.md) | Multitenancy and client data isolation | Accepted |
+| [0024](0024-brand-kit-entity-specification.md) | Brand kit entity specification | Accepted |
+| [0025](0025-performance-feedback-loop-and-creative-learning.md) | Performance feedback loop and creative learning | Accepted |
