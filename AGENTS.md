@@ -1,63 +1,79 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-This repository is in early implementation stage, with architecture defined in docs first.
+## Architecture Guardrails (Must Follow)
+- Read `docs/adr/README.md` before structural changes.
+- Keep layer boundaries strict:
+  - `tools/` orchestrate input/output only.
+  - `services/` hold business logic.
+  - `services/providers/` is the only place for provider API calls.
+  - `db/migrations/` must evolve schema and RLS together.
+- Do not automate provider dashboards (ADR-0004).
+- Paid/external actions require explicit approval and budget checks (ADR-0005).
+- MCP outputs must be compact and structured (ADR-0011).
 
-- `docs/adr/`: Architecture Decision Records (source of truth for structural decisions).
-- `src/vos_studio_mcp/`: main Python package (FastMCP/FastAPI server, tools, services, tasks).
-- `tests/`: automated tests (unit, integration, provider contracts, MCP protocol).
-- `db/migrations/`: Alembic migrations.
-- `.env.example`: required environment variables template.
+## Security Guardrails (Must Follow)
+- Never commit secrets, tokens, cookies, private client data, or raw client assets.
+- Use only environment variables for credentials (`.env.example` documents required keys).
+- Redact sensitive fields in logs, errors, and tool outputs.
+- Enforce auth/session context for authorization; never trust raw `client_id` input.
+- For paid/external actions, require pre-approval, cost estimate, and audit trail.
+- Treat RLS as mandatory isolation for client-scoped data.
 
-Before changing architecture, read [docs/adr/README.md](/C:/Users/vinicius/Documents/workspace/vos-studio-mcp/docs/adr/README.md).
+## Project Structure
+- `src/vos_studio_mcp/server.py`: FastMCP/FastAPI entrypoint.
+- `src/vos_studio_mcp/tools/`: one file per MCP tool (`snake_case`).
+- `src/vos_studio_mcp/schemas/`: Pydantic request/response models.
+- `src/vos_studio_mcp/services/`: domain logic, storage, audit, cost.
+- `src/vos_studio_mcp/tasks/`: Celery jobs.
+- `tests/`: `tools/`, `services/`, `providers/`, `integration/`.
+- `docs/adr/`: architecture source of truth.
 
-## Build, Test, and Development Commands
-Use `uv` for dependency and task management.
+## Commands
+- `uv sync --dev`: install dependencies.
+- `uv run dev`: run API locally.
+- `uv run worker`: run Celery worker.
+- `uv run migrate`: apply Alembic migrations.
+- `uv run lint && uv run typecheck`: static checks.
+- `uv run test`: test suite with coverage.
 
-- `uv sync --dev`: install runtime + dev dependencies.
-- `uv run dev`: run local API server with reload on `:8000`.
-- `uv run worker`: start Celery worker.
-- `uv run flower`: open Celery monitoring UI on `:5555`.
-- `uv run migrate`: apply DB migrations.
-- `uv run makemig -- -m "add_new_table"`: create migration.
-- `uv run lint`: run Ruff lint checks.
-- `uv run fmt`: format code with Ruff.
-- `uv run typecheck`: run strict MyPy checks.
-- `uv run test`: run pytest with coverage.
-
-## Coding Style & Naming Conventions
-- Python 3.12, 4-space indentation, max line length 100.
-- Type hints are required (`mypy` is `strict = true`).
-- Keep MCP tool outputs compact and structured (see ADR-0011).
+## Conventions
+- Python 3.12, 4-space indent, line length 100.
+- Strong typing required (`mypy` strict).
 - Naming:
-  - modules/files: `snake_case.py`
-  - functions/variables: `snake_case`
-  - classes/Pydantic models: `PascalCase`
+  - files/functions/variables: `snake_case`
+  - classes: `PascalCase`
   - constants/env vars: `UPPER_SNAKE_CASE`
+- Errors must include stable `error_code`; logs should include `trace_id`.
 
-## Testing Guidelines
-- Framework: `pytest` + `pytest-asyncio` + `pytest-cov`.
-- Provider HTTP interactions must be mocked (use `respx`).
-- Test layout:
-  - `tests/tools/` for tool handlers
-  - `tests/services/` for business services
-  - `tests/providers/` for adapter contract tests
-  - `tests/integration/` for DB/RLS integration tests
-- Name tests `test_<feature>.py` and functions `test_<behavior>()`.
+## Engineering Principles
+- `SOLID`: keep tools thin and service interfaces focused; depend on abstractions (provider adapter contract), not concrete providers.
+- `YAGNI`: implement only what is required by the current milestone/ADR; avoid speculative endpoints, flags, and abstractions.
+- `KISS`: prefer simple flow and explicit data contracts over clever indirection.
+- `DRY`: centralize shared validation/error mapping; do not duplicate provider logic across tools.
 
-## Commit & Pull Request Guidelines
-Follow Conventional Commit style seen in history:
-- `feat: ...`
-- `docs: ...`
-- `chore: ...`
+## Clean Code Rules
+- Functions should do one thing and stay small; split orchestration from transformation logic.
+- Use explicit, domain-oriented names (`sprint_id`, `approval_token`, `estimated_cost`).
+- Avoid magic values; extract constants/enums for statuses, modes, and error codes.
+- Prefer early returns to reduce nested conditionals.
+- Keep side effects at boundaries (I/O, DB, provider calls) and core logic deterministic.
+- Write comments only when intent is not obvious from code.
 
-PRs should be small and focused, include:
-- clear summary of behavior change,
-- linked issue/ADR when relevant,
-- test evidence (`uv run test`, lint/typecheck status),
-- migration notes for schema changes.
+## Testing Rules
+- `pytest`, `pytest-asyncio`, `respx`, `pytest-cov`.
+- Never call real provider APIs in tests.
+- Every new tool needs:
+  - unit test (`tests/tools/`)
+  - MCP protocol test
+- Every new client-scoped table needs integration + RLS isolation test.
+- Security-sensitive paths (auth, approval, budget, RLS) require explicit negative tests.
 
-## Security & Configuration Tips
-- Never commit real credentials, tokens, cookies, or client assets.
-- Keep secrets in environment variables only.
-- Redact sensitive data from logs and tool responses.
+## PR Requirements
+- Use Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`).
+- Small, focused PRs only.
+- Include:
+  - what changed and why,
+  - linked issue/ADR (if architectural),
+  - evidence: lint, typecheck, tests,
+  - migration/RLS notes when schema changes,
+  - security impact notes (threat, mitigation, residual risk) when relevant.
