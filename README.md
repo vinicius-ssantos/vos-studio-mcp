@@ -416,9 +416,10 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 - ADR foundation
 - descriptive README
-- TypeScript project setup
-- MCP SDK setup
-- local development script
+- Python 3.12 project setup
+- FastMCP/FastAPI setup
+- `uv` project setup
+- local development commands
 - `.env.example`
 
 ### Milestone 1 — Minimal MCP server
@@ -458,7 +459,8 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 - deployment
 - rate limits
 - secret management
-- job queue (Trigger.dev)
+- job queue (Celery + Redis)
+- Flower monitoring
 - monitoring
 
 ### Milestone 6 — Platform integrations (future)
@@ -474,7 +476,7 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 All architecture decisions are documented as ADRs in [`docs/adr/`](docs/adr/README.md).
 
-The current ADR set covers 29 decisions, including language choice, remote server model, generation modes, security boundaries, persistence, provider adapters, cost controls, sprint budget pre-authorization, audit logging, authentication, schema migrations, job queue technology, adapter interface contract, client data isolation, brand kit entity specification, and the performance feedback loop.
+The current ADR set covers ADR-0001 through ADR-0030, including language choice, remote server model, generation modes, security boundaries, persistence, provider adapters, cost controls, sprint budget pre-authorization, audit logging, authentication, schema migrations, job queue technology, adapter interface contract, client data isolation, brand kit entity specification, testing, A/B testing, webhooks, prompt libraries, observability, and the performance feedback loop.
 
 When implementing new features or making structural changes, check the ADR index first. If a decision is not covered by an existing ADR, create one before implementing.
 
