@@ -445,6 +445,16 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 ---
 
+## Architecture decisions
+
+All architecture decisions are documented as ADRs in [`docs/adr/`](docs/adr/README.md).
+
+The current ADR set covers 23 decisions, including language choice, remote server model, generation modes, security boundaries, persistence, provider adapters, cost controls, audit logging, authentication, schema migrations, job queue technology, adapter interface contract, and client data isolation.
+
+When implementing new features or making structural changes, check the ADR index first. If a decision is not covered by an existing ADR, create one before implementing.
+
+---
+
 ## Repository status
 
 This project is in early foundation stage.
