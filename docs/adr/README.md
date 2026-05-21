@@ -8,11 +8,11 @@ ADRs explain important decisions, the context behind them, alternatives consider
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| [0001](0001-use-typescript-as-primary-language.md) | Use TypeScript as the primary language | Accepted |
+| [0001](0001-use-typescript-as-primary-language.md) | Use Python as the primary language | Amended |
 | [0002](0002-build-a-remote-http-mcp-server.md) | Build a remote HTTP MCP server | Accepted |
 | [0003](0003-separate-dashboard-manual-and-api-credits-modes.md) | Separate dashboard_manual and api_credits modes | Accepted |
 | [0004](0004-do-not-automate-provider-dashboards.md) | Do not automate provider dashboards | Accepted |
-| [0005](0005-require-human-approval-for-paid-or-external-actions.md) | Require human approval for paid or external actions | Accepted |
+| [0005](0005-require-human-approval-for-paid-or-external-actions.md) | Require human approval for paid or external actions | Amended |
 | [0006](0006-use-workflow-oriented-tools-to-reduce-token-cost.md) | Use workflow-oriented tools to reduce token cost | Accepted |
 | [0007](0007-use-supabase-postgres-as-the-system-of-record.md) | Use Supabase/Postgres as the system of record | Accepted |
 | [0008](0008-store-assets-outside-the-mcp-and-return-references.md) | Store assets outside the MCP and return references | Accepted |
@@ -33,3 +33,7 @@ ADRs explain important decisions, the context behind them, alternatives consider
 | [0023](0023-multitenancy-and-client-data-isolation.md) | Multitenancy and client data isolation | Accepted |
 | [0024](0024-brand-kit-entity-specification.md) | Brand kit entity specification | Accepted |
 | [0025](0025-performance-feedback-loop-and-creative-learning.md) | Performance feedback loop and creative learning | Accepted |
+| [0026](0026-testing-strategy.md) | Testing strategy | Accepted |
+| [0027](0027-ab-testing-within-creative-sprints.md) | A/B testing within creative sprints | Accepted |
+| [0028](0028-provider-webhook-support.md) | Provider webhook support | Accepted |
+| [0029](0029-cross-client-prompt-library.md) | Cross-client prompt library | Accepted |
