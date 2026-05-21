@@ -10,17 +10,65 @@ VOS Studio MCP will be the operational server for VOS Studio's creative workflow
 
 The project will also be developed with the help of coding agents such as Claude Code and Codex. The codebase should be typed, readable, modular, and easy for agents to navigate safely.
 
-The original decision selected TypeScript. No code has been written yet. Before implementation begins, it is worth evaluating whether TypeScript is the right choice given the full stack requirements.
+The original decision selected TypeScript. No code has been written yet, so the switch to Python carries zero migration cost.
 
 ## Decision
 
-Use **Python** with **FastAPI** and **Pydantic v2** as the primary language and framework.
+Use **Python 3.12+** as the primary language with the following core framework stack:
 
-Python was chosen over TypeScript after a direct comparison across every major component of the planned stack:
+- **`mcp` (official Python SDK) + FastMCP** — MCP server and tool definitions
+- **FastAPI + Starlette** — HTTP middleware layer (auth, rate limiting)
+- **Pydantic v2** — schema validation for tool inputs and domain models
+- **`uv`** — package management
+
+### FastMCP as the MCP layer
+
+FastMCP is the high-level API provided by the official `mcp` Python SDK. It is the correct way to build MCP servers in Python — it handles the MCP protocol (JSON-RPC, schema generation, transport) so the codebase only defines business logic.
+
+Tools are defined with a decorator:
+
+```python
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("VOS Studio MCP")
+
+@mcp.tool()
+async def create_creative_sprint(
+    client_id: str,
+    brief: str,
+    budget_usd: float,
+) -> dict:
+    """Create a new creative sprint for a client."""
+    ...
+```
+
+Python type hints on function signatures become the tool's input schema automatically. Pydantic models can be used as parameter types for complex inputs, keeping validation consistent across the stack.
+
+### FastAPI as the HTTP middleware layer
+
+FastMCP exposes the MCP server as an ASGI application. FastAPI wraps it to add:
+
+- OAuth 2.1 authentication middleware (ADR-0019)
+- Rate limiting
+- Health check endpoints
+- Any future HTTP concerns that are not part of the MCP protocol
+
+```
+Request
+  → FastAPI middleware (auth, rate limiting)
+  → FastMCP ASGI app (MCP protocol, tool dispatch)
+  → tool handler (business logic)
+  → services (database, providers, storage)
+```
+
+FastMCP supports both HTTP (Streamable HTTP / SSE) and stdio transports from the same codebase. stdio is used for local development and testing; HTTP is used for the remote production server (ADR-0002).
+
+### Why Python over TypeScript
 
 | Component | TypeScript option | Python option | Advantage |
 |---|---|---|---|
-| MCP SDK | `@modelcontextprotocol/sdk` | `mcp` (official) | Tied |
+| MCP SDK | `@modelcontextprotocol/sdk` | `mcp` + FastMCP (official) | Python |
+| MCP tool definition | Manual schema + handler wiring | `@mcp.tool()` decorator | Python |
 | HTTP framework | Fastify / Hono | FastAPI + Pydantic | Python |
 | Schema validation | Zod | Pydantic v2 | Tied |
 | ORM / migrations | Drizzle (new) | SQLAlchemy 2 + Alembic (15+ years) | Python |
@@ -30,34 +78,33 @@ Python was chosen over TypeScript after a direct comparison across every major c
 | ML / image analysis (M6) | Minimal ecosystem | PyTorch, OpenCV, transformers | Python |
 | Supabase client | `supabase-js` (first-class) | `supabase-py` (official) | TypeScript |
 
-TypeScript had a genuine advantage only in the Supabase client. Python was equal or better in every other area. For the performance feedback loop (ADR-0025) and future ML-adjacent work in Milestone 6, Python's ecosystem is the clear winner.
-
-The switch is being made before any code is written, so the migration cost is zero.
+TypeScript had a genuine advantage only in the Supabase client. Python is equal or better in every other area. FastMCP specifically makes Python the stronger choice for the MCP layer itself, reversing the earlier "tied" assessment for the SDK column.
 
 ## Alternatives considered
 
-- **TypeScript + Node.js**: original decision. Coherent stack but not the strongest option for this specific project. The planned tools (Drizzle, Trigger.dev) are TypeScript-only and would have locked the project into a weaker position for ML-adjacent work. Rejected in favor of Python before implementation began.
+- **TypeScript + Node.js**: original decision. Coherent stack but not the strongest option for this project. The planned tools (Drizzle, Trigger.dev) are TypeScript-only and lock the project into a weaker position for ML-adjacent work and for the MCP tool definition experience. Rejected before implementation began.
+- **FastAPI without FastMCP**: using FastAPI to implement the MCP protocol manually. More control but significant boilerplate and risk of protocol drift. Rejected — the official SDK handles this correctly.
 - **Go**: excellent HTTP performance and strong typing, but immature MCP SDK and weaker ML ecosystem. Rejected.
 - **Rust**: strong performance guarantees, but too complex for a creative operations MVP developed with coding agents. Rejected.
 
 ## Consequences
 
-The codebase uses Python 3.12+ with `uv` as the package manager. `uv` was chosen over `pip` and `poetry` for its speed, unified tooling (replaces pip + venv + pip-tools), and growing adoption as the modern Python standard.
+The codebase uses Python 3.12+ with `uv` as the package manager. `uv` replaces pip + venv + pip-tools with a single fast tool. The `pyproject.toml` replaces `package.json`. There is no `tsconfig.json` or `node_modules/`.
 
-Pydantic v2 provides schema validation from the boundary of every MCP tool input, equivalent to the role Zod played in the TypeScript plan. FastAPI consumes Pydantic models natively, keeping the validation layer consistent from HTTP to tool handler.
+Tool definitions in `src/vos_studio_mcp/tools/` are thin: they register with FastMCP via decorator, validate input with Pydantic, delegate to services, and return compact structured output (ADR-0011). The MCP protocol layer is invisible to tool authors.
 
-Python for auxiliary ML scripts (Milestone 6) is natural rather than a context switch — it is the same language and environment as the core server.
+Pydantic v2 is the single validation library across tool inputs, domain schemas, and SQLAlchemy model serialization. No secondary validation library is needed.
 
-The main tradeoff is the Supabase JS client being slightly more feature-complete than `supabase-py`. This is acceptable because SQLAlchemy handles all database queries directly against Postgres, and the Supabase client is used only for auth and storage operations where `supabase-py` is sufficient.
+Python for auxiliary ML scripts (Milestone 6) is natural — same language, same environment, same dependency management.
+
+The main tradeoff is the Supabase JS client being slightly more feature-complete than `supabase-py`. This is acceptable because SQLAlchemy handles all database queries directly, and `supabase-py` is only used for auth and storage where it is sufficient.
 
 ## Impact on VOS Studio MCP
-
-The project structure uses Python conventions:
 
 ```text
 src/
   vos_studio_mcp/
-    server.py
+    server.py           ← FastMCP instance + FastAPI wrapper
     tools/
       create_client.py
       save_brand_kit.py
@@ -98,6 +145,4 @@ pyproject.toml
 .env.example
 ```
 
-Package management uses `uv`. The `pyproject.toml` replaces `package.json`. There is no `tsconfig.json` or `node_modules/`.
-
-MCP tools expose clear typed inputs via Pydantic models and compact structured outputs (ADR-0011). Agents navigate and modify the codebase predictably given Python's readability and the consistency of FastAPI + Pydantic conventions.
+Key dependencies: `mcp`, `fastapi`, `pydantic`, `sqlalchemy[asyncio]`, `alembic`, `asyncpg`, `celery[redis]`, `httpx`, `authlib`, `supabase`.

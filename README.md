@@ -334,7 +334,14 @@ Future implementation work should read the ADRs before making architectural chan
 
 ## Expected project structure
 
-The project uses Python with FastAPI and Pydantic v2. Package management is handled by `uv`.
+The project uses Python with the official MCP SDK (FastMCP) for tool definitions, FastAPI for HTTP middleware, and Pydantic v2 for schema validation. Package management is handled by `uv`.
+
+```
+Request → FastAPI middleware (auth, rate limiting)
+        → FastMCP ASGI app (MCP protocol, tool dispatch)
+        → tool handler (business logic)
+        → services (database, providers, storage)
+```
 
 ```text
 src/
