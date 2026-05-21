@@ -29,12 +29,14 @@
 - `docs/adr/`: architecture source of truth.
 
 ## Commands
-- `uv sync --dev`: install dependencies.
-- `uv run dev`: run API locally.
-- `uv run worker`: run Celery worker.
-- `uv run migrate`: apply Alembic migrations.
-- `uv run lint && uv run typecheck`: static checks.
-- `uv run test`: test suite with coverage.
+- `make sync`: install dependencies.
+- `make dev`: run API locally.
+- `make worker`: run Celery worker.
+- `make flower`: run Flower monitoring.
+- `make migrate`: apply Alembic migrations.
+- `make lint && make typecheck`: static checks.
+- `make test`: test suite with coverage.
+- `make check`: run lint, typecheck, and tests.
 
 ## Conventions
 - Python 3.12, 4-space indent, line length 100.
