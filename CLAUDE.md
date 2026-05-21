@@ -68,7 +68,31 @@ Use this file as the implementation playbook for coding agents.
 - Never execute paid actions without pre-approval/budget checks (ADR-0005).
 - Never commit credentials, tokens, cookies, or client assets.
 
-## 8) Delivery Standard (Definition of Done)
+## 8) Commands
+Use the repository Makefile for local checks:
+
+```bash
+make sync
+make lint
+make typecheck
+make test
+make check
+```
+
+Run the local HTTP/MCP server with:
+
+```bash
+make dev
+```
+
+Run background infrastructure processes with:
+
+```bash
+make worker
+make flower
+```
+
+## 9) Delivery Standard (Definition of Done)
 A change is done only when:
 - architecture is ADR-compliant,
 - lint/typecheck/tests pass,
