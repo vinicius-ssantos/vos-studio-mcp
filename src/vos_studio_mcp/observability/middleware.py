@@ -21,10 +21,9 @@ async def correlation_middleware(
     request_token = request_id_var.set(request_id)
     try:
         response = await call_next(request)
+        response.headers["x-trace-id"] = trace_id
+        response.headers["x-request-id"] = request_id
+        return response
     finally:
         trace_id_var.reset(trace_token)
         request_id_var.reset(request_token)
-
-    response.headers["x-trace-id"] = trace_id
-    response.headers["x-request-id"] = request_id
-    return response

@@ -63,14 +63,3 @@ addopts = "--cov=src/vos_studio_mcp --cov-report=term-missing"
 [tool.coverage.run]
 source = ["src/vos_studio_mcp"]
 omit = ["tests/*"]
-
-[tool.uv.scripts]
-dev      = "uvicorn vos_studio_mcp.server:app --reload --port 8000"
-worker   = "celery -A vos_studio_mcp.tasks.celery_app worker --loglevel=info"
-flower   = "celery -A vos_studio_mcp.tasks.celery_app flower --port=5555"
-migrate  = "alembic upgrade head"
-makemig  = "alembic revision --autogenerate -m"
-typecheck = "mypy src/"
-lint     = "ruff check src/ tests/"
-fmt      = "ruff format src/ tests/"
-test     = "pytest"
