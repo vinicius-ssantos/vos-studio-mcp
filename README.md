@@ -309,7 +309,7 @@ Architectural decisions are documented in [`docs/adr`](docs/adr).
 
 Current ADRs:
 
-- ADR-0001 — Use TypeScript as the primary language
+- ADR-0001 — Use Python as the primary language
 - ADR-0002 — Build a remote HTTP MCP server
 - ADR-0003 — Separate dashboard_manual and api_credits modes
 - ADR-0004 — Do not automate provider dashboards
@@ -334,41 +334,50 @@ Future implementation work should read the ADRs before making architectural chan
 
 ## Expected project structure
 
-The initial TypeScript structure should evolve toward:
+The project uses Python with FastAPI and Pydantic v2. Package management is handled by `uv`.
 
 ```text
 src/
-  server.ts
-  tools/
-    createClient.ts
-    saveBrandKit.ts
-    createCreativeSprint.ts
-    prepareDashboardPack.ts
-    estimateGenerationCost.ts
-    registerManualAsset.ts
-    reviewAssetQuality.ts
-    createDeliveryPack.ts
-  schemas/
-    client.ts
-    brandKit.ts
-    sprint.ts
-    asset.ts
-    job.ts
-    approval.ts
-  services/
-    database.ts
-    storage.ts
-    auditLog.ts
-    costEstimator.ts
-    providers/
-      manualDashboard.ts
-      higgsfield.ts
-      freepik.ts
-      magnific.ts
-  queues/
-    generationQueue.ts
-  config/
-    env.ts
+  vos_studio_mcp/
+    server.py
+    tools/
+      create_client.py
+      save_brand_kit.py
+      create_creative_sprint.py
+      prepare_dashboard_pack.py
+      estimate_generation_cost.py
+      register_manual_asset.py
+      review_asset_quality.py
+      create_delivery_pack.py
+      record_performance.py
+    schemas/
+      client.py
+      brand_kit.py
+      sprint.py
+      asset.py
+      job.py
+      approval.py
+      performance.py
+    services/
+      database.py
+      storage.py
+      audit_log.py
+      cost_estimator.py
+      providers/
+        base.py
+        manual_dashboard.py
+        higgsfield.py
+        freepik.py
+        magnific.py
+    tasks/
+      generation.py
+    config/
+      env.py
+db/
+  models.py
+  migrations/
+pyproject.toml
+.env.example
 ```
 
 This structure may change, but changes should be documented through ADRs when they affect architecture.

@@ -1,53 +1,57 @@
 # ADR-0021 — Job queue technology selection
 
-Status: Accepted  
-Date: 2026-05-21
+Status: Amended  
+Date: 2026-05-21  
+Amended: 2026-05-21
 
 ## Context
 
-ADR-0014 decided that long-running generation jobs must use a queue rather than blocking synchronously inside the MCP tool call. That ADR listed Redis/BullMQ and Trigger.dev as candidate options but did not select one.
+ADR-0014 decided that long-running generation jobs must use a queue rather than blocking synchronously inside the MCP tool call.
 
-Without a concrete choice, Milestone 5 implementation cannot begin safely. The selection affects infrastructure requirements (does it need a Redis instance?), local development setup, observability, retry behavior, and cost model.
+The original decision selected Trigger.dev because it integrates with Supabase and is TypeScript-native. With the switch to Python (ADR-0001 amended), Trigger.dev is no longer applicable — it has no Python SDK. A Python-native queue solution is required.
 
-The primary use cases for the queue are:
+The primary use cases for the queue remain unchanged:
 - AI image and video generation jobs via provider APIs (Higgsfield, Freepik, Magnific)
-- Jobs that can fail and need retry with backoff
+- Jobs that can fail and need retry with exponential backoff
 - Jobs where the result must be registered as an asset after completion
 - Jobs that should be trackable by `job_id` from MCP tools like `check_generation_status`
 
 ## Decision
 
-Use **Trigger.dev** (self-hosted or cloud) as the job queue and background task runtime.
+Use **Celery** with **Redis** as the job queue and background task runtime.
 
-Trigger.dev was selected because:
-- It is designed for long-running, retryable background jobs in TypeScript — exactly the use case here.
-- It integrates with Supabase natively, which eliminates the need for a separate Redis instance.
-- It provides a built-in dashboard for monitoring job status, retries, and failures — relevant for operational traceability (ADR-0015).
-- Jobs are defined as regular TypeScript functions, keeping the codebase consistent (ADR-0001).
-- It supports durable execution: if the server restarts mid-job, the job resumes from the last checkpoint.
+Celery was selected because:
+- It is the standard background task library in the Python ecosystem, battle-tested in production for over 12 years.
+- It supports retries with exponential backoff, task chaining, and result storage natively.
+- Redis as the broker is lightweight, fast, and requires no additional schema management alongside Postgres.
+- **Flower** (Celery's monitoring dashboard) provides real-time visibility into job status, retries, and failures — equivalent to the observability benefit that Trigger.dev offered in the original decision.
+- Workers are regular Python async functions, consistent with the FastAPI codebase (ADR-0001).
+- Strong community knowledge reduces risk for agent-assisted development.
 
-For local development and very simple internal retry needs, a lightweight in-process retry with exponential backoff is acceptable as a temporary bridge before Trigger.dev is configured.
+For local development, a single Redis instance (via Docker) runs alongside the FastAPI server. Workers are started separately with `uv run celery -A src.vos_studio_mcp.tasks worker`.
 
 ## Alternatives considered
 
-- **BullMQ + Redis**: mature, widely used, TypeScript-native. Rejected because it requires a Redis instance, which adds infrastructure to manage alongside Supabase Postgres.
-- **Trigger.dev**: selected. See reasoning above.
-- **Inngest**: similar to Trigger.dev, good TypeScript support, but less mature Supabase integration at the time of this decision.
-- **AWS SQS or Google Cloud Tasks**: production-grade managed queues, but introduce cloud-specific dependencies that conflict with the infrastructure-agnostic stance of the current stage.
-- **Synchronous polling loop**: rejected. Blocks the MCP server process and is not retryable.
+- **Trigger.dev**: TypeScript-only. Not applicable after ADR-0001 amendment. Rejected.
+- **ARQ**: async-native Python queue backed by Redis. Lighter than Celery and well-suited for async FastAPI projects. Rejected in favor of Celery's greater maturity and monitoring tooling (Flower), but a valid fallback if Celery proves heavy for the initial workload.
+- **Dramatiq + Redis**: good alternative to Celery with a cleaner API, but smaller community and less monitoring tooling. Rejected.
+- **AWS SQS or Google Cloud Tasks**: managed queues that eliminate the Redis dependency, but introduce cloud-specific coupling. Rejected for the current stage.
+- **Synchronous polling loop**: rejected. Blocks the server process and is not retryable.
 
 ## Consequences
 
-Adding Trigger.dev means the production deployment must include either a Trigger.dev cloud account or a self-hosted Trigger.dev instance. This is a new infrastructure dependency but a manageable one given the tight Supabase integration.
+The production deployment requires a Redis instance alongside the FastAPI server and Celery workers. This is a well-understood operational pattern with broad hosting support (Railway, Fly.io, Render all offer managed Redis).
 
-Each provider adapter (ADR-0009) will define one or more Trigger.dev task functions for its generation workflows. The adapter interface contract (ADR-0022) must include how tasks are enqueued and how results are reported back.
+Each provider adapter (ADR-0009) defines one or more Celery task functions for its generation workflows. The adapter interface contract (ADR-0022) specifies how tasks are enqueued and how results are reported back.
 
-Job IDs returned by MCP tools must map to Trigger.dev run IDs or an internal tracking record in Postgres, so that `check_generation_status` can always query status without coupling directly to Trigger.dev's API in the tool layer.
+Job IDs returned by MCP tools map to Celery task IDs stored in an internal `jobs` table in Postgres, so `check_generation_status` queries the database rather than coupling directly to Celery's result backend.
 
 ## Impact on VOS Studio MCP
 
-- Add `@trigger.dev/sdk` as a dependency in Milestone 5.
-- Create `src/queues/` as the location for Trigger.dev task definitions.
-- Each provider adapter must expose a `enqueueGenerationJob(params)` function that returns a `job_id`.
-- The `.env.example` must include `TRIGGER_API_KEY` and `TRIGGER_API_URL`.
-- Local development can use the Trigger.dev CLI (`npx trigger.dev dev`) to run tasks locally without a cloud account.
+- Add `celery[redis]` and `redis` to `pyproject.toml` in Milestone 5.
+- Add `flower` as a dev/monitoring dependency.
+- Create `src/vos_studio_mcp/tasks/generation.py` as the location for Celery task definitions.
+- Each provider adapter must expose an `enqueue_generation_job(params)` method that returns a `job_id`.
+- The `.env.example` must include `CELERY_BROKER_URL` (e.g. `redis://localhost:6379/0`) and `CELERY_RESULT_BACKEND`.
+- Local development uses `docker compose up redis` to start Redis, then `uv run celery worker` to start workers.
+- Flower monitoring runs on a separate port (default `5555`) for local and staging visibility.
