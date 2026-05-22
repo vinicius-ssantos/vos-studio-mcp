@@ -10,6 +10,7 @@ from vos_studio_mcp.tools.list_sprint_assets import register_list_sprint_assets_
 from vos_studio_mcp.tools.prepare_dashboard_pack import register_prepare_dashboard_pack_tools
 from vos_studio_mcp.tools.record_asset_performance import register_record_asset_performance_tools
 from vos_studio_mcp.tools.register_manual_asset import register_manual_asset_tools
+from vos_studio_mcp.tools.request_api_video import register_request_api_video_tools
 from vos_studio_mcp.tools.save_brand_kit import register_save_brand_kit_tools
 from vos_studio_mcp.tools.status import register_status_tools
 
@@ -26,3 +27,4 @@ def register_tools(mcp: FastMCP) -> None:
     register_manual_asset_tools(mcp)
     register_close_sprint_tools(mcp)
     register_record_asset_performance_tools(mcp)
+    register_request_api_video_tools(mcp)

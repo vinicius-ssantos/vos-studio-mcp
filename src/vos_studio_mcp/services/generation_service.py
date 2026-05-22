@@ -1,0 +1,115 @@
+"""Generation service — request API-based video generation (ADR-0005, ADR-0009)."""
+
+import logging
+import uuid
+
+from sqlalchemy import func, select
+
+from db.models import Asset, Sprint
+from vos_studio_mcp.auth.guards import assert_owns_client
+from vos_studio_mcp.errors import ErrorCode, VosError
+from vos_studio_mcp.schemas.api_video import ApiVideoInput, ApiVideoResponse
+from vos_studio_mcp.services.database import get_session, set_tenant_context
+from vos_studio_mcp.services.providers import get_adapter
+from vos_studio_mcp.services.providers.base import BudgetLimit, GenerationParams
+
+log = logging.getLogger(__name__)
+
+
+async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
+    assert_owns_client(data.client_id)
+
+    adapter = get_adapter("higgsfield")
+
+    params = GenerationParams(
+        sprint_id=data.sprint_id,
+        prompt_version=data.prompt_version,
+        preset_version=data.preset_version,
+        mode="api_credits",
+        approval_token=data.approval_token,
+        prompt=data.prompt,
+        image_url=data.image_url,
+        duration_seconds=data.duration_seconds,
+        resolution=data.resolution,
+        aspect_ratio=data.aspect_ratio,
+    )
+
+    estimate = await adapter.estimate_cost(params)
+
+    async with get_session() as session:
+        await set_tenant_context(session, data.client_id)
+
+        sprint = await session.get(Sprint, uuid.UUID(data.sprint_id))
+        if sprint is None:
+            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
+        if str(sprint.client_id) != data.client_id:
+            raise VosError(ErrorCode.INVALID_INPUT, "sprint does not belong to this client")
+        if sprint.sprint_status != "open":
+            raise VosError(ErrorCode.SPRINT_CLOSED, f"Sprint {data.sprint_id} is not open")
+
+        if sprint.spent_usd + estimate.estimated_usd > sprint.max_spend_usd:
+            raise VosError(
+                ErrorCode.BUDGET_EXCEEDED,
+                f"Generation would exceed sprint budget "
+                f"(remaining ${sprint.max_spend_usd - sprint.spent_usd:.2f}, "
+                f"estimated ${estimate.estimated_usd:.2f})",
+            )
+
+        if sprint.max_videos is not None:
+            video_count_result = await session.execute(
+                select(func.count()).where(
+                    Asset.sprint_id == sprint.id,
+                    Asset.provider == "higgsfield",
+                )
+            )
+            video_count = video_count_result.scalar_one()
+            if video_count >= sprint.max_videos:
+                raise VosError(
+                    ErrorCode.BUDGET_EXCEEDED,
+                    f"Sprint video limit reached ({sprint.max_videos} videos allowed)",
+                )
+
+        params.budget_limit = BudgetLimit(
+            max_spend_usd=sprint.max_spend_usd,
+            max_videos=sprint.max_videos,
+        )
+
+        result = await adapter.generate_video(params)
+
+        asset = Asset(
+            sprint_id=sprint.id,
+            provider="higgsfield",
+            prompt_version=data.prompt_version,
+            preset_version=data.preset_version,
+            storage_url=None,
+            provider_job_id=result.job_id,
+            generation_status="pending",
+        )
+        session.add(asset)
+
+        sprint.spent_usd += estimate.estimated_usd
+        await session.commit()
+        await session.refresh(asset)
+
+    log.info(
+        "api_video.queued",
+        extra={
+            "sprint_id": data.sprint_id,
+            "asset_id": str(asset.id),
+            "job_id": result.job_id,
+            "estimated_usd": estimate.estimated_usd,
+        },
+    )
+
+    return ApiVideoResponse(
+        status="queued",
+        job_id=result.job_id,
+        asset_id=str(asset.id),
+        sprint_id=data.sprint_id,
+        estimated_cost_usd=estimate.estimated_usd,
+        summary=(
+            f"Video generation queued for sprint '{data.sprint_id}'. "
+            f"Job ID: {result.job_id}. Estimated cost: ${estimate.estimated_usd:.2f}."
+        ),
+        next_action="get_video_job_status",
+    )
