@@ -75,7 +75,15 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
             max_videos=sprint.max_videos,
         )
 
+        log.info(
+            "generation.requested",
+            extra={"sprint_id": data.sprint_id, "provider": "higgsfield"},
+        )
         result = await adapter.generate_video(params)
+        log.info(
+            "generation.provider_submitted",
+            extra={"sprint_id": data.sprint_id, "job_id": result.job_id, "provider": "higgsfield"},
+        )
 
         asset = Asset(
             sprint_id=sprint.id,
@@ -95,11 +103,12 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
     poll_video_job.delay(str(asset.id))
 
     log.info(
-        "api_video.queued",
+        "generation.queued",
         extra={
             "sprint_id": data.sprint_id,
             "asset_id": str(asset.id),
             "job_id": result.job_id,
+            "provider": "higgsfield",
             "estimated_usd": estimate.estimated_usd,
         },
     )
