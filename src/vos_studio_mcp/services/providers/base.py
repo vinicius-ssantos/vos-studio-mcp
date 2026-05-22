@@ -17,6 +17,12 @@ class GenerationParams:
     mode: Literal["dashboard_manual", "api_credits"]
     budget_limit: BudgetLimit | None = None   # required if mode is api_credits
     approval_token: str | None = None          # required if mode is api_credits
+    # Provider-specific content resolved by the caller
+    prompt: str = ""
+    image_url: str | None = None
+    duration_seconds: int = 5
+    resolution: str = "720p"
+    aspect_ratio: str = "16:9"
 
 
 @dataclass
@@ -52,7 +58,7 @@ class ManualPack:
     prompt: str
     provider: str
     model: str
-    settings: dict = field(default_factory=dict)
+    settings: dict[str, object] = field(default_factory=dict)
     checklist: list[str] = field(default_factory=list)
     naming_convention: str = ""
     qa_criteria: list[str] = field(default_factory=list)

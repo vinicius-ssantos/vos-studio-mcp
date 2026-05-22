@@ -8,6 +8,7 @@ from mcp.server.fastmcp import FastMCP
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
+from vos_studio_mcp.auth.middleware import auth_middleware
 from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.observability.logging import configure_logging
 from vos_studio_mcp.observability.middleware import correlation_middleware
@@ -30,6 +31,8 @@ mcp = FastMCP(settings.mcp_server_name)
 register_tools(mcp)
 
 app = FastAPI(title=settings.mcp_server_name, debug=settings.debug)
+# Middleware executes in reverse registration order: correlation runs first, then auth.
+app.middleware("http")(auth_middleware)
 app.middleware("http")(correlation_middleware)
 
 

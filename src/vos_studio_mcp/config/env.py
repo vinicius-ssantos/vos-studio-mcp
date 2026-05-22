@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     oauth_client_id: str = Field(default="", alias="OAUTH_CLIENT_ID")
     oauth_client_secret: str = Field(default="", alias="OAUTH_CLIENT_SECRET")
     dev_bearer_token: str = Field(default="", alias="DEV_BEARER_TOKEN")
+    dev_client_id: str = Field(
+        default="00000000-0000-0000-0000-000000000001", alias="DEV_CLIENT_ID"
+    )
 
     # Celery + Redis (ADR-0021)
     celery_broker_url: str = Field(default="redis://localhost:6379/0", alias="CELERY_BROKER_URL")

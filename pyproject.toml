@@ -7,7 +7,7 @@ dependencies = [
     "mcp>=1.9.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
-    "pydantic>=2.0.0",
+    "pydantic[email]>=2.0.0",
     "pydantic-settings>=2.0.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "alembic>=1.13.0",
@@ -20,6 +20,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "structlog>=24.0.0",
     "sentry-sdk[fastapi,celery]>=2.0.0",
+    "joserfc>=1.6.5",
 ]
 
 [dependency-groups]
@@ -52,9 +53,11 @@ ignore = ["E501"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+explicit_package_bases = true
+mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["celery", "celery.*"]
+module = ["celery", "celery.*", "authlib", "authlib.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

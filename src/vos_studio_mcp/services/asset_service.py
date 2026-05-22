@@ -1,0 +1,75 @@
+"""Asset service — register manually produced assets (ADR-0008)."""
+
+import logging
+import uuid
+
+from sqlalchemy import select
+
+from db.models import Asset
+from vos_studio_mcp.schemas.asset import AssetInput, AssetListItem, AssetListResponse, AssetResponse
+from vos_studio_mcp.services.database import get_session
+
+log = logging.getLogger(__name__)
+
+
+async def register_manual_asset(data: AssetInput) -> AssetResponse:
+    async with get_session() as session:
+        asset = Asset(
+            sprint_id=uuid.UUID(data.sprint_id),
+            provider=data.provider,
+            prompt_version=data.prompt_version,
+            preset_version=data.preset_version,
+            storage_url=data.storage_url,
+            preview_url=data.preview_url,
+            width=data.width,
+            height=data.height,
+            format=data.format,
+            notes=data.notes,
+        )
+        session.add(asset)
+        await session.commit()
+        await session.refresh(asset)
+
+    log.info(
+        "asset registered",
+        extra={"asset_id": str(asset.id), "sprint_id": data.sprint_id},
+    )
+    return AssetResponse(
+        status="registered",
+        asset_id=str(asset.id),
+        sprint_id=data.sprint_id,
+        summary=f"Asset registered for sprint {data.sprint_id} via {data.provider}.",
+        next_action="register_manual_asset",
+    )
+
+
+async def list_sprint_assets(sprint_id: str) -> AssetListResponse:
+    sprint_uuid = uuid.UUID(sprint_id)
+    async with get_session() as session:
+        result = await session.execute(
+            select(Asset).where(Asset.sprint_id == sprint_uuid).order_by(Asset.created_at)
+        )
+        rows = list(result.scalars().all())
+
+    items = [
+        AssetListItem(
+            asset_id=str(row.id),
+            provider=row.provider,
+            prompt_version=row.prompt_version,
+            preset_version=row.preset_version,
+            storage_url=row.storage_url,
+            preview_url=row.preview_url,
+            width=row.width,
+            height=row.height,
+            format=row.format,
+        )
+        for row in rows
+    ]
+
+    return AssetListResponse(
+        status="ok",
+        sprint_id=sprint_id,
+        total=len(items),
+        assets=items,
+        next_action="prepare_dashboard_pack" if items else "prepare_dashboard_pack",
+    )
