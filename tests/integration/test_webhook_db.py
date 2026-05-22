@@ -74,10 +74,10 @@ async def test_asset(db_session):  # type: ignore[misc]
 
     await db_session.execute(
         text(
-            "INSERT INTO clients (id, name, slug) VALUES (:id, :name, :slug)"
+            "INSERT INTO clients (id, name) VALUES (:id, :name)"
             " ON CONFLICT DO NOTHING"
         ),
-        {"id": str(client_id), "name": "Integ Client", "slug": f"integ-{client_id.hex[:6]}"},
+        {"id": str(client_id), "name": "Integ Client"},
     )
     await db_session.execute(
         text(
