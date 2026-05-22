@@ -106,7 +106,7 @@ The library creates a new category of agency intellectual property. It should be
 | `services/prompt_library_service.py` — `promote_to_library`, `get_library_suggestions` | ✅ Implemented |
 | `tools/promote_to_library.py` — MCP tool with anonymization checklist | ✅ Implemented |
 | Unit tests — `tests/services/test_prompt_library_service.py` | ✅ Implemented |
-| `create_creative_sprint` — `library_suggestions` in response | ⏳ Deferred to Milestone 3 |
+| `create_creative_sprint` — `library_suggestions` in response | ✅ Implemented |
 
 ## Impact on VOS Studio MCP
 

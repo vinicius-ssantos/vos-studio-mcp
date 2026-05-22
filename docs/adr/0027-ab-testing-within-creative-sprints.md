@@ -81,8 +81,8 @@ Sprints that use variant groups produce more assets per sprint (one per variant)
 | `services/variant_service.py` — `conclude_variant_test` | ✅ Implemented |
 | `tools/conclude_variant_test.py` — MCP tool | ✅ Implemented |
 | Unit tests — `tests/services/test_variant_service.py` | ✅ Implemented |
-| `create_creative_sprint` — accept variant group definitions | ⏳ Deferred to Milestone 3 |
-| `record_performance` — optional `variant_id` | ⏳ Deferred to Milestone 3 |
+| `create_creative_sprint` — accept variant group definitions | ✅ Implemented |
+| `record_performance` — optional `variant_id` | ✅ Implemented |
 
 ## Impact on VOS Studio MCP
 

@@ -22,8 +22,8 @@ All tool handlers access providers through a central registry (`providers/__init
 |----------|--------------|--------|-------|
 | Manual dashboard | `manual_dashboard` | ✅ Implemented | `prepare_manual_pack` only; `generate_*` raises `NotImplementedError` |
 | Higgsfield | `higgsfield` | ✅ Implemented | Video generation (text2video + image2video), job status, HMAC webhook verification, cost estimation |
-| Freepik | `freepik` | ⏳ Not started | Image generation; API key configured in env |
-| Magnific | `magnific` | ⏳ Not started | Image upscaling; API key configured in env |
+| Freepik | `freepik` | ✅ Implemented | Image generation (text-to-image), async job status, HMAC webhook verification, cost estimation |
+| Magnific | `magnific` | ✅ Implemented | Image upscaling (`generate_image` with `image_url`), async job status, HMAC webhook verification, cost estimation |
 
 ## Alternatives considered
 

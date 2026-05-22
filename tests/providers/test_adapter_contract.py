@@ -16,7 +16,9 @@ from vos_studio_mcp.services.providers.base import (
     ManualPack,
     ProviderAdapter,
 )
+from vos_studio_mcp.services.providers.freepik import FreepikAdapter
 from vos_studio_mcp.services.providers.higgsfield import HiggsFieldAdapter
+from vos_studio_mcp.services.providers.magnific import MagnificAdapter
 from vos_studio_mcp.services.providers.manual_dashboard import ManualDashboardAdapter
 
 # ---------------------------------------------------------------------------
@@ -24,12 +26,26 @@ from vos_studio_mcp.services.providers.manual_dashboard import ManualDashboardAd
 # ---------------------------------------------------------------------------
 
 _HIGGSFIELD_SETTINGS_PATCH = "vos_studio_mcp.services.providers.higgsfield.get_settings"
+_FREEPIK_SETTINGS_PATCH = "vos_studio_mcp.services.providers.freepik.get_settings"
+_MAGNIFIC_SETTINGS_PATCH = "vos_studio_mcp.services.providers.magnific.get_settings"
 
 
 def _higgsfield_settings() -> Any:
     from vos_studio_mcp.config.env import Settings
 
     return Settings(HIGGSFIELD_API_KEY="test-key", WEBHOOK_SECRET_HIGGSFIELD="wh-secret")
+
+
+def _freepik_settings() -> Any:
+    from vos_studio_mcp.config.env import Settings
+
+    return Settings(FREEPIK_API_KEY="test-key", WEBHOOK_SECRET_FREEPIK="fp-secret")
+
+
+def _magnific_settings() -> Any:
+    from vos_studio_mcp.config.env import Settings
+
+    return Settings(MAGNIFIC_API_KEY="test-key", WEBHOOK_SECRET_MAGNIFIC="mag-secret")
 
 
 def _base_params(mode: str = "dashboard_manual") -> GenerationParams:
@@ -171,4 +187,88 @@ def test_verify_webhook_never_raises_on_bad_headers_higgsfield() -> None:
     """Malformed headers must not raise — just return False."""
     with patch(_HIGGSFIELD_SETTINGS_PATCH, return_value=_higgsfield_settings()):
         result = HiggsFieldAdapter().verify_webhook_signature(b"payload", {"X-Bad": "garbage"})
+    assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Freepik adapter — Protocol structural check + contract
+# ---------------------------------------------------------------------------
+
+
+def test_freepik_adapter_satisfies_protocol() -> None:
+    assert isinstance(FreepikAdapter(), ProviderAdapter)
+
+
+@pytest.mark.asyncio
+async def test_estimate_cost_freepik() -> None:
+    result = await FreepikAdapter().estimate_cost(_base_params("api_credits"))
+    assert isinstance(result, CostEstimate)
+    assert result.estimated_usd >= 0
+
+
+@pytest.mark.asyncio
+async def test_generate_video_raises_not_implemented_freepik() -> None:
+    with pytest.raises(NotImplementedError):
+        await FreepikAdapter().generate_video(_base_params("api_credits"))
+
+
+@pytest.mark.asyncio
+async def test_prepare_manual_pack_shape_freepik() -> None:
+    pack = await FreepikAdapter().prepare_manual_pack(_base_params())
+    _assert_manual_pack(pack, "freepik")
+
+
+def test_verify_webhook_no_secret_returns_false_freepik() -> None:
+    from vos_studio_mcp.config.env import Settings
+
+    with patch(_FREEPIK_SETTINGS_PATCH, return_value=Settings(WEBHOOK_SECRET_FREEPIK="")):
+        result = FreepikAdapter().verify_webhook_signature(b"payload", {})
+    assert result is False
+
+
+def test_verify_webhook_never_raises_on_bad_headers_freepik() -> None:
+    with patch(_FREEPIK_SETTINGS_PATCH, return_value=_freepik_settings()):
+        result = FreepikAdapter().verify_webhook_signature(b"payload", {"X-Bad": "garbage"})
+    assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Magnific adapter — Protocol structural check + contract
+# ---------------------------------------------------------------------------
+
+
+def test_magnific_adapter_satisfies_protocol() -> None:
+    assert isinstance(MagnificAdapter(), ProviderAdapter)
+
+
+@pytest.mark.asyncio
+async def test_estimate_cost_magnific() -> None:
+    result = await MagnificAdapter().estimate_cost(_base_params("api_credits"))
+    assert isinstance(result, CostEstimate)
+    assert result.estimated_usd >= 0
+
+
+@pytest.mark.asyncio
+async def test_generate_video_raises_not_implemented_magnific() -> None:
+    with pytest.raises(NotImplementedError):
+        await MagnificAdapter().generate_video(_base_params("api_credits"))
+
+
+@pytest.mark.asyncio
+async def test_prepare_manual_pack_shape_magnific() -> None:
+    pack = await MagnificAdapter().prepare_manual_pack(_base_params())
+    _assert_manual_pack(pack, "magnific")
+
+
+def test_verify_webhook_no_secret_returns_false_magnific() -> None:
+    from vos_studio_mcp.config.env import Settings
+
+    with patch(_MAGNIFIC_SETTINGS_PATCH, return_value=Settings(WEBHOOK_SECRET_MAGNIFIC="")):
+        result = MagnificAdapter().verify_webhook_signature(b"payload", {})
+    assert result is False
+
+
+def test_verify_webhook_never_raises_on_bad_headers_magnific() -> None:
+    with patch(_MAGNIFIC_SETTINGS_PATCH, return_value=_magnific_settings()):
+        result = MagnificAdapter().verify_webhook_signature(b"payload", {"X-Bad": "garbage"})
     assert result is False

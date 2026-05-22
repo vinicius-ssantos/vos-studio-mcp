@@ -35,6 +35,8 @@ async def record_asset_performance(data: PerformanceInput) -> PerformanceRespons
         asset.performance_score = data.score
         asset.performance_label = data.label
         asset.performance_notes = data.notes
+        if data.variant_id is not None:
+            asset.variant_id = uuid.UUID(data.variant_id)
 
         sprint = await session.get(Sprint, sprint_uuid)
         if sprint is None:

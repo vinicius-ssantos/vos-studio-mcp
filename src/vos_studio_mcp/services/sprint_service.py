@@ -5,18 +5,20 @@ import uuid
 
 from sqlalchemy import func, select
 
-from db.models import Asset, Sprint
+from db.models import Asset, Sprint, Variant, VariantGroup
 from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.sprint import (
     BudgetStatus,
     CloseSprintInput,
     CloseSprintResponse,
+    LibrarySuggestion,
     SprintInput,
     SprintResponse,
     SprintStatusResponse,
 )
 from vos_studio_mcp.services.database import get_session, set_tenant_context
+from vos_studio_mcp.services.prompt_library_service import get_library_suggestions
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +43,30 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
             sprint_status="open",
         )
         session.add(sprint)
+        await session.flush()  # get sprint.id before adding children
+
+        for vg_input in data.variant_groups:
+            group = VariantGroup(
+                id=uuid.uuid4(),
+                sprint_id=sprint.id,
+                hypothesis=vg_input.hypothesis,
+                variable=vg_input.variable,
+                status="running",
+            )
+            session.add(group)
+            await session.flush()
+            for v_input in vg_input.variants:
+                session.add(
+                    Variant(
+                        id=uuid.uuid4(),
+                        group_id=group.id,
+                        label=v_input.label,
+                        description=v_input.description,
+                        prompt_version=v_input.prompt_version,
+                        preset_version=v_input.preset_version,
+                    )
+                )
+
         await session.commit()
         await session.refresh(sprint)
 
@@ -50,7 +76,15 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
             "sprint_id": str(sprint.id),
             "client_id": data.client_id,
             "mode": sprint.mode,
+            "variant_groups": len(data.variant_groups),
         },
+    )
+
+    library_suggestions = await get_library_suggestions(
+        industry=data.industry,
+        format=data.format,
+        objective=data.objective,
+        platform=data.platform,
     )
 
     alert = sprint.spent_usd >= sprint.max_spend_usd * sprint.alert_threshold_pct
@@ -68,6 +102,17 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
             alert=alert,
         ),
         next_action="prepare_dashboard_pack",
+        variant_groups_created=len(data.variant_groups),
+        library_suggestions=[
+            LibrarySuggestion(
+                template_id=s.template_id,
+                name=s.name,
+                performance_tier=s.performance_tier,
+                avg_ctr=s.avg_ctr,
+                prompt_preview=s.prompt_preview,
+            )
+            for s in library_suggestions
+        ],
     )
 
 
