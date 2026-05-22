@@ -48,3 +48,16 @@ class SprintStatusResponse(BaseModel):
     asset_count: int
     summary: str
     next_action: str
+
+
+class CloseSprintInput(BaseModel):
+    sprint_id: str
+    reason: str | None = None
+
+
+class CloseSprintResponse(BaseModel):
+    status: str
+    sprint_id: str
+    sprint_status: str
+    summary: str
+    next_action: str

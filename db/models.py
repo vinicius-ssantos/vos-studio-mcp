@@ -53,6 +53,9 @@ class BrandKit(Base):
     identity: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     visual: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     restrictions: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    performance_memory: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -113,6 +116,9 @@ class Asset(Base):
     height: Mapped[int | None] = mapped_column(Integer)
     format: Mapped[str | None] = mapped_column(String(20))
     notes: Mapped[str | None] = mapped_column(Text)
+    performance_score: Mapped[int | None] = mapped_column(Integer)
+    performance_label: Mapped[str | None] = mapped_column(String(20))
+    performance_notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

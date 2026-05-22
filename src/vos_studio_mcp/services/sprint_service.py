@@ -6,8 +6,11 @@ import uuid
 from sqlalchemy import func, select
 
 from db.models import Asset, Sprint
+from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.sprint import (
     BudgetStatus,
+    CloseSprintInput,
+    CloseSprintResponse,
     SprintInput,
     SprintResponse,
     SprintStatusResponse,
@@ -71,7 +74,7 @@ async def get_sprint_status(sprint_id: str) -> SprintStatusResponse:
     async with get_session() as session:
         sprint = await session.get(Sprint, sprint_uuid)
         if sprint is None:
-            raise ValueError(f"Sprint {sprint_id} not found")
+            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {sprint_id} not found")
 
         asset_count_result = await session.execute(
             select(func.count()).where(Asset.sprint_id == sprint_uuid)
@@ -106,4 +109,27 @@ async def get_sprint_status(sprint_id: str) -> SprintStatusResponse:
             f"{asset_count} asset(s) registered and ${remaining:.2f} remaining."
         ),
         next_action=next_action,
+    )
+
+
+async def close_sprint(data: CloseSprintInput) -> CloseSprintResponse:
+    sprint_uuid = uuid.UUID(data.sprint_id)
+    async with get_session() as session:
+        sprint = await session.get(Sprint, sprint_uuid)
+        if sprint is None:
+            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
+        if sprint.sprint_status == "closed":
+            raise VosError(ErrorCode.INVALID_INPUT, f"Sprint {data.sprint_id} is already closed")
+
+        sprint.sprint_status = "closed"
+        await session.commit()
+        product_name = sprint.product_name
+
+    log.info("sprint closed", extra={"sprint_id": data.sprint_id})
+    return CloseSprintResponse(
+        status="closed",
+        sprint_id=data.sprint_id,
+        sprint_status="closed",
+        summary=f"Sprint for '{product_name}' closed. Use record_asset_performance to log results.",
+        next_action="record_asset_performance",
     )
