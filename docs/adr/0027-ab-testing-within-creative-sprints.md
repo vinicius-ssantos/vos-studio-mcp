@@ -1,7 +1,8 @@
 # ADR-0027 — A/B testing within creative sprints
 
-Status: Accepted  
-Date: 2026-05-21
+Status: Amended  
+Date: 2026-05-21  
+Amended: 2026-05-22
 
 ## Context
 
@@ -69,13 +70,24 @@ The performance feedback loop (ADR-0025) is enriched: `PerformanceRecord` gains 
 
 Sprints that use variant groups produce more assets per sprint (one per variant), which increases generation cost. The budget pre-authorization model (ADR-0005) must account for the total cost across all variants.
 
+## Implementation status
+
+| Component | Status |
+|-----------|--------|
+| `VariantGroup` + `Variant` ORM models in `db/models.py` | ✅ Implemented |
+| `Asset.variant_id` FK (optional) | ✅ Implemented |
+| Migration `0004_add_variant_tables.py` (RLS included) | ✅ Implemented |
+| `schemas/variant.py` — `ConcludeVariantTestInput/Response` | ✅ Implemented |
+| `services/variant_service.py` — `conclude_variant_test` | ✅ Implemented |
+| `tools/conclude_variant_test.py` — MCP tool | ✅ Implemented |
+| Unit tests — `tests/services/test_variant_service.py` | ✅ Implemented |
+| `create_creative_sprint` — accept variant group definitions | ⏳ Deferred to Milestone 3 |
+| `record_performance` — optional `variant_id` | ⏳ Deferred to Milestone 3 |
+
 ## Impact on VOS Studio MCP
 
-- Add `VariantGroup` and `Variant` to `db/models.py` and `src/vos_studio_mcp/schemas/`.
-- Add `variant_group_id` (optional) to `SprintInput` schema.
-- Add `variant_id` (optional) to `PerformanceRecord` schema (ADR-0025).
-- Create `src/vos_studio_mcp/tools/conclude_variant_test.py` as a new tool in Milestone 3+.
-- Update `create_creative_sprint` to accept and store variant group definitions.
-- Update `record_performance` to accept an optional `variant_id`.
-- Update the brand kit enrichment logic (ADR-0025) to prefer winning variants as sources for `proven_angles` and `proven_hooks`.
-- Target: Milestone 3 (after performance records are in place).
+- `db/models.py` — `VariantGroup`, `Variant` models; `Asset.variant_id` FK.
+- `db/migrations/versions/0004_add_variant_tables.py` — tables + RLS policies scoped via sprint → client.
+- `src/vos_studio_mcp/schemas/variant.py` — `ConcludeVariantTestInput`, `ConcludeVariantTestResponse`.
+- `src/vos_studio_mcp/services/variant_service.py` — `conclude_variant_test` service.
+- `src/vos_studio_mcp/tools/conclude_variant_test.py` — MCP tool registered in `tools/__init__.py`.

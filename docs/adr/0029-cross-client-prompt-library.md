@@ -1,7 +1,8 @@
 # ADR-0029 — Cross-client prompt library
 
-Status: Accepted  
-Date: 2026-05-21
+Status: Amended  
+Date: 2026-05-21  
+Amended: 2026-05-22
 
 ## Context
 
@@ -95,11 +96,24 @@ The library creates a new category of agency intellectual property. It should be
 
 `PromptTemplate` requires its own database table with no `client_id` column. Alembic migrations and access control policies must reflect this difference from client-scoped entities.
 
+## Implementation status
+
+| Component | Status |
+|-----------|--------|
+| `PromptTemplate` ORM model in `db/models.py` (no `client_id`) | ✅ Implemented |
+| Migration `0005_add_prompt_templates.py` (no RLS — agency-wide) | ✅ Implemented |
+| `schemas/prompt_template.py` — `PromoteToLibraryInput/Response`, `PromptTemplateSuggestion` | ✅ Implemented |
+| `services/prompt_library_service.py` — `promote_to_library`, `get_library_suggestions` | ✅ Implemented |
+| `tools/promote_to_library.py` — MCP tool with anonymization checklist | ✅ Implemented |
+| Unit tests — `tests/services/test_prompt_library_service.py` | ✅ Implemented |
+| `create_creative_sprint` — `library_suggestions` in response | ⏳ Deferred to Milestone 3 |
+
 ## Impact on VOS Studio MCP
 
-- Add `PromptTemplate` to `db/models.py` without `client_id` (agency-wide resource).
-- Create `src/vos_studio_mcp/schemas/prompt_template.py` with the Pydantic model.
-- Create `src/vos_studio_mcp/tools/promote_to_library.py` for the promotion workflow.
-- Update `create_creative_sprint` to query and return `library_suggestions` when matching templates exist.
-- Add operator-role check to `promote_to_library` and any library write operations.
-- Target: Milestone 3+ (after performance records provide the first data to promote from).
+- `db/models.py` — `PromptTemplate` model (no `client_id`, agency-wide).
+- `db/migrations/versions/0005_add_prompt_templates.py` — table, no RLS restriction.
+- `src/vos_studio_mcp/schemas/prompt_template.py` — input/response schemas.
+- `src/vos_studio_mcp/services/prompt_library_service.py` — promotion + suggestion query.
+- `src/vos_studio_mcp/tools/promote_to_library.py` — MCP tool registered in `tools/__init__.py`.
+- `confirmed=False` preview mode shows anonymization checklist; `confirmed=True` saves to DB.
+- Placeholder validation: `prompt_template` must contain `{{` before saving.
