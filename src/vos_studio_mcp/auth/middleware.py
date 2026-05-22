@@ -42,7 +42,7 @@ async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) 
     if not settings.oauth_issuer_url:
         return JSONResponse({"error": "unauthorized", "detail": "Invalid token"}, status_code=401)
 
-    client_id = validate_bearer_token(token, settings.oauth_issuer_url)
+    client_id = await validate_bearer_token(token, settings.oauth_issuer_url)
     if client_id is None:
         return JSONResponse({"error": "unauthorized", "detail": "Invalid or expired token"}, status_code=401)
 

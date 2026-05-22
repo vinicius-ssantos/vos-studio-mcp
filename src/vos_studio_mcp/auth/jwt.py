@@ -12,15 +12,16 @@ from joserfc.registry import Header
 
 log = logging.getLogger(__name__)
 
-_jwks_cache: dict[str, KeySet] = {}
+_JWKS_TTL = 600  # seconds — re-fetch JWKS after 10 min to support key rotation
+_jwks_cache: dict[str, tuple[KeySet, float]] = {}  # issuer_url → (keyset, fetched_at)
 
 _ALLOWED_ALGORITHMS = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
 
 
-def validate_bearer_token(token: str, issuer_url: str) -> str | None:
+async def validate_bearer_token(token: str, issuer_url: str) -> str | None:
     """Validate a JWT against the issuer's JWKS. Returns client_id or None."""
     try:
-        key_set = _fetch_key_set(issuer_url)
+        key_set = await _fetch_key_set(issuer_url)
         decoded = jwt.decode(token, key_set, algorithms=_ALLOWED_ALGORITHMS)
         claims: dict[str, Any] = decoded.claims
         _check_expiry(claims)
@@ -40,14 +41,20 @@ def _check_expiry(claims: dict[str, Any]) -> None:
         raise ValueError("token expired")
 
 
-def _fetch_key_set(issuer_url: str) -> KeySet:
-    if issuer_url in _jwks_cache:
-        return _jwks_cache[issuer_url]
+async def _fetch_key_set(issuer_url: str) -> KeySet:
+    cached = _jwks_cache.get(issuer_url)
+    if cached is not None:
+        key_set, fetched_at = cached
+        if time.monotonic() - fetched_at < _JWKS_TTL:
+            return key_set
+
     jwks_uri = f"{issuer_url.rstrip('/')}/.well-known/jwks.json"
-    response = httpx.get(jwks_uri, timeout=5.0)
-    response.raise_for_status()
-    key_set = KeySet.import_key_set(response.json())
-    _jwks_cache[issuer_url] = key_set
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        response = await client.get(jwks_uri)
+        response.raise_for_status()
+        key_set = KeySet.import_key_set(response.json())
+
+    _jwks_cache[issuer_url] = (key_set, time.monotonic())
     return key_set
 
 
