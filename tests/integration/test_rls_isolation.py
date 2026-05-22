@@ -5,6 +5,11 @@ for every client-scoped table: sprints, assets, brand_kits.
 
 Requires a real PostgreSQL database. Skipped automatically without DATABASE_URL.
 Run with: pytest tests/integration/ -m integration -v
+
+Two connections are used deliberately:
+  engine      — superuser (DATABASE_URL); bypasses RLS to insert test fixtures.
+  app_engine  — non-superuser (APP_DATABASE_URL); subject to RLS policies, so
+                the isolation assertions actually prove enforcement.
 """
 
 import os
@@ -36,10 +41,28 @@ def _require_db() -> None:
 
 @pytest_asyncio.fixture
 async def engine():  # type: ignore[misc]
+    """Superuser engine — used only for fixture setup/teardown (bypasses RLS)."""
     _require_db()
     from sqlalchemy.ext.asyncio import create_async_engine
 
     e = create_async_engine(os.environ["DATABASE_URL"], echo=False)
+    yield e
+    await e.dispose()
+
+
+@pytest_asyncio.fixture
+async def app_engine():  # type: ignore[misc]
+    """Non-superuser engine for RLS-sensitive queries.
+
+    Uses APP_DATABASE_URL when available (CI sets this to a vos_app role that
+    is subject to RLS policies). Falls back to DATABASE_URL so the fixture
+    collection never errors in local environments without the extra role.
+    """
+    _require_db()
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    url = os.environ.get("APP_DATABASE_URL") or os.environ["DATABASE_URL"]
+    e = create_async_engine(url, echo=False)
     yield e
     await e.dispose()
 
@@ -116,17 +139,17 @@ async def two_clients(engine):  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
-# RLS isolation tests
+# RLS isolation tests — queries run through app_engine (non-superuser)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_sprint_rls_client_a_cannot_read_client_b_sprints(engine, two_clients) -> None:  # type: ignore[misc]
+async def test_sprint_rls_client_a_cannot_read_client_b_sprints(app_engine, two_clients) -> None:  # type: ignore[misc]
     """Client A's RLS context must not expose client B's sprints."""
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+    factory = async_sessionmaker(app_engine, expire_on_commit=False)
     client_a_id = str(two_clients["client_a"])
     sprint_b_id = str(two_clients["sprint_b"])
 
@@ -147,12 +170,12 @@ async def test_sprint_rls_client_a_cannot_read_client_b_sprints(engine, two_clie
 
 
 @pytest.mark.asyncio
-async def test_sprint_rls_client_a_can_read_own_sprint(engine, two_clients) -> None:  # type: ignore[misc]
+async def test_sprint_rls_client_a_can_read_own_sprint(app_engine, two_clients) -> None:  # type: ignore[misc]
     """Client A's RLS context must expose its own sprint."""
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+    factory = async_sessionmaker(app_engine, expire_on_commit=False)
     client_a_id = str(two_clients["client_a"])
     sprint_a_id = str(two_clients["sprint_a"])
 
@@ -173,12 +196,12 @@ async def test_sprint_rls_client_a_can_read_own_sprint(engine, two_clients) -> N
 
 
 @pytest.mark.asyncio
-async def test_asset_rls_client_a_cannot_read_client_b_assets(engine, two_clients) -> None:  # type: ignore[misc]
+async def test_asset_rls_client_a_cannot_read_client_b_assets(app_engine, two_clients) -> None:  # type: ignore[misc]
     """Client A's RLS context must not expose client B's assets."""
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+    factory = async_sessionmaker(app_engine, expire_on_commit=False)
     client_a_id = str(two_clients["client_a"])
     asset_b_id = str(two_clients["asset_b"])
 
@@ -199,12 +222,12 @@ async def test_asset_rls_client_a_cannot_read_client_b_assets(engine, two_client
 
 
 @pytest.mark.asyncio
-async def test_asset_rls_client_a_can_read_own_assets(engine, two_clients) -> None:  # type: ignore[misc]
+async def test_asset_rls_client_a_can_read_own_assets(app_engine, two_clients) -> None:  # type: ignore[misc]
     """Client A's RLS context must expose its own assets."""
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+    factory = async_sessionmaker(app_engine, expire_on_commit=False)
     client_a_id = str(two_clients["client_a"])
     asset_a_id = str(two_clients["asset_a"])
 
@@ -225,12 +248,12 @@ async def test_asset_rls_client_a_can_read_own_assets(engine, two_clients) -> No
 
 
 @pytest.mark.asyncio
-async def test_sprint_count_rls_client_a_sees_only_own_sprints(engine, two_clients) -> None:  # type: ignore[misc]
+async def test_sprint_count_rls_client_a_sees_only_own_sprints(app_engine, two_clients) -> None:  # type: ignore[misc]
     """Aggregate query under client A context must not count client B's sprints."""
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+    factory = async_sessionmaker(app_engine, expire_on_commit=False)
     client_a_id = str(two_clients["client_a"])
 
     async with factory() as session:
@@ -241,9 +264,7 @@ async def test_sprint_count_rls_client_a_sees_only_own_sprints(engine, two_clien
         await session.execute(text("SET LOCAL row_security = on"))
 
         result = await session.execute(
-            text(
-                "SELECT COUNT(*) FROM sprints WHERE id IN (:sa, :sb)"
-            ),
+            text("SELECT COUNT(*) FROM sprints WHERE id IN (:sa, :sb)"),
             {"sa": str(two_clients["sprint_a"]), "sb": str(two_clients["sprint_b"])},
         )
         count = result.scalar()
