@@ -52,7 +52,7 @@ class ManualPack:
     prompt: str
     provider: str
     model: str
-    settings: dict = field(default_factory=dict)
+    settings: dict[str, object] = field(default_factory=dict)
     checklist: list[str] = field(default_factory=list)
     naming_convention: str = ""
     qa_criteria: list[str] = field(default_factory=list)

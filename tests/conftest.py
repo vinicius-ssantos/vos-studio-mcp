@@ -15,7 +15,9 @@ def server_params() -> StdioServerParameters:
 @pytest.fixture
 async def mcp_session(server_params: StdioServerParameters):
     """Live MCP client session for protocol tests."""
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
+    async with (
+        stdio_client(server_params) as (read, write),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        yield session

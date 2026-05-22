@@ -15,8 +15,8 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    from src.vos_studio_mcp.config.env import settings
-    return settings.database_url
+    from vos_studio_mcp.config.env import get_settings
+    return get_settings().database_url
 
 
 def run_migrations_offline() -> None:
