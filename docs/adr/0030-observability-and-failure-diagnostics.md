@@ -90,11 +90,12 @@ Operationally, incident triage will rely on `trace_id` and `generation_attempt_i
 | Sentry `FastApiIntegration` + `StarletteIntegration` | ✅ Implemented |
 | Sentry `CeleryIntegration` | ✅ Implemented |
 | Generation lifecycle events (`generation.requested`, `generation.queued`, `generation.provider_submitted`, `generation.completed`, `generation.failed`) | ✅ Implemented |
-| Celery task base class with correlation propagation | ⏳ Deferred — tasks use `asyncio.run` bridge; propagation via structlog context TBD |
+| Celery task base class with correlation propagation | ✅ Implemented — `CorrelatedTask` injects/restores `trace_id`/`request_id` via task headers |
 
 ## Impact on VOS Studio MCP
 
 - `src/vos_studio_mcp/observability/` — JSON logging, correlation middleware, context vars.
 - `src/vos_studio_mcp/errors.py` — `ErrorCode` StrEnum, `VosError` exception.
 - `server.py` — Sentry init with FastAPI + Celery integrations; `VosError` exception handler.
+- `src/vos_studio_mcp/tasks/base.py` — `CorrelatedTask` base class; registered as `task_cls` in `celery_app.py`.
 - `generation_service.py` / `tasks/poll_video.py` — lifecycle log events with `job_id`, `provider`, `error_code` fields.
