@@ -142,6 +142,25 @@ def _sign(secret: str, body: bytes) -> str:
     return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
 
+async def _post_higgsfield_webhook(body: bytes, signature: str):  # type: ignore[no-untyped-def]
+    """Post to the webhook ASGI app without crossing event loops."""
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from vos_studio_mcp.routes.webhooks import router
+
+    app = FastAPI()
+    app.include_router(router)
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.post(
+            "/webhooks/higgsfield",
+            content=body,
+            headers={"X-Higgsfield-Signature": signature},
+        )
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -150,8 +169,6 @@ def _sign(secret: str, body: bytes) -> str:
 @pytest.mark.asyncio
 async def test_webhook_completed_updates_generation_status(test_asset, db_session) -> None:  # type: ignore[misc]
     """COMPLETED webhook payload must flip generation_status to 'completed'."""
-    from fastapi.testclient import TestClient
-
     from vos_studio_mcp.config.env import get_settings
 
     secret = get_settings().webhook_secret_higgsfield or "test-secret"
@@ -163,19 +180,7 @@ async def test_webhook_completed_updates_generation_status(test_asset, db_sessio
         }
     ).encode()
 
-    from fastapi import FastAPI
-
-    from vos_studio_mcp.routes.webhooks import router
-
-    app = FastAPI()
-    app.include_router(router)
-
-    with TestClient(app) as client:
-        resp = client.post(
-            "/webhooks/higgsfield",
-            content=body,
-            headers={"X-Higgsfield-Signature": _sign(secret, body)},
-        )
+    resp = await _post_higgsfield_webhook(body, _sign(secret, body))
 
     assert resp.status_code == 200
     assert resp.json() == {"received": True}
@@ -196,26 +201,14 @@ async def test_webhook_completed_updates_generation_status(test_asset, db_sessio
 @pytest.mark.asyncio
 async def test_webhook_failed_updates_generation_status(test_asset, db_session) -> None:  # type: ignore[misc]
     """FAILED webhook payload must flip generation_status to 'failed'."""
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
     from vos_studio_mcp.config.env import get_settings
-    from vos_studio_mcp.routes.webhooks import router
 
     secret = get_settings().webhook_secret_higgsfield or "test-secret"
     body = json.dumps(
         {"generation_id": test_asset["job_id"], "status": "FAILED", "output": {}}
     ).encode()
 
-    app = FastAPI()
-    app.include_router(router)
-
-    with TestClient(app) as client:
-        resp = client.post(
-            "/webhooks/higgsfield",
-            content=body,
-            headers={"X-Higgsfield-Signature": _sign(secret, body)},
-        )
+    resp = await _post_higgsfield_webhook(body, _sign(secret, body))
 
     assert resp.status_code == 200
 
@@ -234,11 +227,7 @@ async def test_webhook_failed_updates_generation_status(test_asset, db_session) 
 @pytest.mark.asyncio
 async def test_webhook_unknown_job_id_is_idempotent(db_session) -> None:  # type: ignore[misc]
     """Payload with an unknown generation_id must return 200 without modifying the DB."""
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
     from vos_studio_mcp.config.env import get_settings
-    from vos_studio_mcp.routes.webhooks import router
 
     secret = get_settings().webhook_secret_higgsfield or "test-secret"
     body = json.dumps(
@@ -249,15 +238,7 @@ async def test_webhook_unknown_job_id_is_idempotent(db_session) -> None:  # type
         }
     ).encode()
 
-    app = FastAPI()
-    app.include_router(router)
-
-    with TestClient(app) as client:
-        resp = client.post(
-            "/webhooks/higgsfield",
-            content=body,
-            headers={"X-Higgsfield-Signature": _sign(secret, body)},
-        )
+    resp = await _post_higgsfield_webhook(body, _sign(secret, body))
 
     assert resp.status_code == 200
     assert resp.json() == {"received": True}
@@ -266,23 +247,10 @@ async def test_webhook_unknown_job_id_is_idempotent(db_session) -> None:  # type
 @pytest.mark.asyncio
 async def test_webhook_invalid_signature_returns_403(test_asset) -> None:  # type: ignore[misc]
     """Request with wrong HMAC must be rejected before any DB access."""
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    from vos_studio_mcp.routes.webhooks import router
-
     body = json.dumps(
         {"generation_id": test_asset["job_id"], "status": "COMPLETED", "output": {}}
     ).encode()
 
-    app = FastAPI()
-    app.include_router(router)
-
-    with TestClient(app) as client:
-        resp = client.post(
-            "/webhooks/higgsfield",
-            content=body,
-            headers={"X-Higgsfield-Signature": "sha256=badhash"},
-        )
+    resp = await _post_higgsfield_webhook(body, "sha256=badhash")
 
     assert resp.status_code == 403
