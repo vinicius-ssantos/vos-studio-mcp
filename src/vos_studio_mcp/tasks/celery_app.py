@@ -1,4 +1,4 @@
-"""Celery application for background jobs."""
+"""Celery application instance for background jobs."""
 
 from celery import Celery
 

@@ -20,7 +20,7 @@ Every table that contains client-scoped data must have RLS enabled and a policy 
 The application sets the current client context at the start of each authenticated request by calling:
 
 ```sql
-SELECT set_config('app.current_client_id', $clientId, true);
+SELECT set_config('app.current_client_id', $client_id, true);
 ```
 
 RLS policies on client-scoped tables reference this configuration:
@@ -39,7 +39,7 @@ Soft-delete (`deleted_at` timestamp) is the standard for removing client records
 - **Separate schema per client**: strong isolation, but operationally complex. Schema creation, migration (ADR-0020), and connection pooling become significantly harder at scale. Rejected.
 - **Separate database per client**: maximum isolation, but prohibitively expensive and operationally unmanageable for an agency with many clients. Rejected.
 - **Application-level filtering only (WHERE client_id = ?)**: relies on every query in every tool handler being correct. A single missing filter leaks data. Rejected as the sole mechanism — application-level filters remain as defense-in-depth but RLS is the enforcement layer.
-- **RLS via Supabase**: selected. Enforced at the database level, auditable, compatible with Drizzle ORM (ADR-0020), and supported natively in Supabase.
+- **RLS via Supabase**: selected. Enforced at the database level, auditable, compatible with SQLAlchemy/Alembic migrations (ADR-0020), and supported natively in Supabase.
 
 ## Consequences
 
@@ -52,7 +52,7 @@ Testing must include cross-client isolation tests: a query authenticated as clie
 ## Impact on VOS Studio MCP
 
 - Enable RLS on all client-scoped tables in each migration file (ADR-0020).
-- Create a `src/services/database.ts` helper that sets `app.current_client_id` from the authenticated session before returning a database connection for use in a request.
+- Create a `src/vos_studio_mcp/services/database.py` helper that sets `app.current_client_id` from the authenticated session before returning a database connection for use in a request.
 - Never trust `client_id` from MCP tool input for authorization decisions — use it only for lookups, with RLS as the enforcement layer.
 - Add cross-client isolation as a required test category before Milestone 3 is considered complete.
 - Soft-delete columns (`deleted_at`) must be included in the initial schema for all client-scoped tables and referenced in RLS policies to prevent deleted records from appearing in queries.

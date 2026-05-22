@@ -23,7 +23,7 @@ The MCP tool should create a job, return a job ID, and allow follow-up status ch
 
 This improves reliability and supports retries, status checks, and operational monitoring.
 
-The tradeoff is additional infrastructure such as Redis/BullMQ, Trigger.dev, or a managed queue.
+The tradeoff is additional infrastructure. ADR-0021 resolves this with Celery + Redis as the Python-native queue stack.
 
 ## Impact on VOS Studio MCP
 

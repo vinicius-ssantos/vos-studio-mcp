@@ -327,6 +327,18 @@ Current ADRs:
 - ADR-0016 — Use environment variables and secret management for credentials
 - ADR-0017 — Start private-first and client-safe by design
 - ADR-0018 — Use incremental PR-based development with coding agents
+- ADR-0019 — Define authentication model for the remote MCP server
+- ADR-0020 — Database schema evolution and migration strategy
+- ADR-0021 — Job queue technology selection
+- ADR-0022 — Provider adapter interface contract
+- ADR-0023 — Multitenancy and client data isolation
+- ADR-0024 — Brand kit entity specification
+- ADR-0025 — Performance feedback loop and creative learning
+- ADR-0026 — Testing strategy
+- ADR-0027 — A/B testing within creative sprints
+- ADR-0028 — Provider webhook support
+- ADR-0029 — Cross-client prompt library
+- ADR-0030 — Observability and failure diagnostics
 
 Future implementation work should read the ADRs before making architectural changes.
 
@@ -416,9 +428,10 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 - ADR foundation
 - descriptive README
-- TypeScript project setup
-- MCP SDK setup
-- local development script
+- Python 3.12 project setup
+- FastMCP/FastAPI setup
+- `uv` project setup
+- local development commands
 - `.env.example`
 
 ### Milestone 1 — Minimal MCP server
@@ -458,8 +471,9 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 - deployment
 - rate limits
 - secret management
-- job queue (Trigger.dev)
-- monitoring
+- job queue (Celery + Redis)
+- Flower monitoring
+- application monitoring and diagnostics
 
 ### Milestone 6 — Platform integrations (future)
 
@@ -474,7 +488,7 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 All architecture decisions are documented as ADRs in [`docs/adr/`](docs/adr/README.md).
 
-The current ADR set covers 29 decisions, including language choice, remote server model, generation modes, security boundaries, persistence, provider adapters, cost controls, sprint budget pre-authorization, audit logging, authentication, schema migrations, job queue technology, adapter interface contract, client data isolation, brand kit entity specification, and the performance feedback loop.
+The current ADR set covers ADR-0001 through ADR-0030, including language choice, remote server model, generation modes, security boundaries, persistence, provider adapters, cost controls, sprint budget pre-authorization, audit logging, authentication, schema migrations, job queue technology, adapter interface contract, client data isolation, brand kit entity specification, testing, A/B testing, webhooks, prompt libraries, observability, and the performance feedback loop.
 
 When implementing new features or making structural changes, check the ADR index first. If a decision is not covered by an existing ADR, create one before implementing.
 

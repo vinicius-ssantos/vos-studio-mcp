@@ -1,14 +1,21 @@
+"""FastAPI/FastMCP application entrypoint."""
+
+from typing import Any, cast
+
 import sentry_sdk
 from fastapi import FastAPI
+from mcp.server.fastmcp import FastMCP
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
-from src.vos_studio_mcp._instance import mcp
-from src.vos_studio_mcp.config.env import settings
-from src.vos_studio_mcp.config.logging import configure_logging
+from vos_studio_mcp.config.env import get_settings
+from vos_studio_mcp.observability.logging import configure_logging
+from vos_studio_mcp.observability.middleware import correlation_middleware
+from vos_studio_mcp.services.status import get_server_status
+from vos_studio_mcp.tools import register_tools
 
-# Observability — must be initialized before tools and routes (ADR-0030)
-configure_logging(debug=settings.debug)
+settings = get_settings()
+configure_logging(settings.log_level)
 
 if settings.sentry_dsn:
     sentry_sdk.init(
@@ -19,21 +26,31 @@ if settings.sentry_dsn:
         send_default_pii=False,
     )
 
-# Register all tools by importing the tools package (ADR-0006)
-import src.vos_studio_mcp.tools  # noqa: F401, E402
+mcp = FastMCP(settings.mcp_server_name)
+register_tools(mcp)
 
-# FastAPI wraps FastMCP to add HTTP middleware (auth, rate limiting, webhooks)
-app = FastAPI(
-    title="VOS Studio MCP",
-    version="0.1.0",
-    docs_url="/docs" if settings.debug else None,
-)
-
-# Mount the MCP server as an ASGI sub-application (ADR-0002)
-app.mount("/mcp", mcp.streamable_http_app())
+app = FastAPI(title=settings.mcp_server_name, debug=settings.debug)
+app.middleware("http")(correlation_middleware)
 
 
 @app.get("/health")
-async def http_health() -> dict:
-    """HTTP health check — for load balancers and uptime monitors."""
-    return {"status": "ok", "server": settings.mcp_server_name}
+async def health() -> dict[str, str | None]:
+    """Return a minimal HTTP health check payload."""
+    status = get_server_status(settings)
+    return {
+        "status": status.status,
+        "service": status.service,
+        "version": status.version,
+    }
+
+
+def _mount_mcp_app(fastapi_app: FastAPI, mcp_server: FastMCP) -> None:
+    """Mount the FastMCP ASGI app when supported by the installed SDK."""
+    for method_name in ("streamable_http_app", "sse_app"):
+        method = getattr(mcp_server, method_name, None)
+        if callable(method):
+            fastapi_app.mount("/mcp", cast(Any, method)())
+            return
+
+
+_mount_mcp_app(app, mcp)
