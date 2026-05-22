@@ -8,7 +8,7 @@ ADRs explain important decisions, the context behind them, alternatives consider
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| [0001](0001-use-typescript-as-primary-language.md) | Use Python as the primary language | Amended |
+| [0001](0001-use-python-as-primary-language.md) | Use Python as the primary language | Amended |
 | [0002](0002-build-a-remote-http-mcp-server.md) | Build a remote HTTP MCP server | Accepted |
 | [0003](0003-separate-dashboard-manual-and-api-credits-modes.md) | Separate dashboard_manual and api_credits modes | Accepted |
 | [0004](0004-do-not-automate-provider-dashboards.md) | Do not automate provider dashboards | Accepted |
@@ -37,3 +37,4 @@ ADRs explain important decisions, the context behind them, alternatives consider
 | [0027](0027-ab-testing-within-creative-sprints.md) | A/B testing within creative sprints | Accepted |
 | [0028](0028-provider-webhook-support.md) | Provider webhook support | Accepted |
 | [0029](0029-cross-client-prompt-library.md) | Cross-client prompt library | Accepted |
+| [0030](0030-observability-structured-logging-and-error-tracking.md) | Observability: structured logging and error tracking | Accepted |
