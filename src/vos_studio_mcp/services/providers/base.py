@@ -17,6 +17,12 @@ class GenerationParams:
     mode: Literal["dashboard_manual", "api_credits"]
     budget_limit: BudgetLimit | None = None   # required if mode is api_credits
     approval_token: str | None = None          # required if mode is api_credits
+    # Provider-specific content resolved by the caller
+    prompt: str = ""
+    image_url: str | None = None
+    duration_seconds: int = 5
+    resolution: str = "720p"
+    aspect_ratio: str = "16:9"
 
 
 @dataclass
