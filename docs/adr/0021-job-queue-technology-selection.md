@@ -28,7 +28,7 @@ Celery was selected because:
 - Workers are regular Python async functions, consistent with the FastAPI codebase (ADR-0001).
 - Strong community knowledge reduces risk for agent-assisted development.
 
-For local development, a single Redis instance (via Docker) runs alongside the FastAPI server. Workers are started separately with `uv run celery -A src.vos_studio_mcp.tasks worker`.
+For local development, a single Redis instance (via Docker) runs alongside the FastAPI server. Workers are started separately with `make worker`, which resolves to `uv run celery -A vos_studio_mcp.tasks.celery_app:celery_app worker --loglevel=info`.
 
 ## Alternatives considered
 
@@ -53,5 +53,5 @@ Job IDs returned by MCP tools map to Celery task IDs stored in an internal `jobs
 - Create `src/vos_studio_mcp/tasks/generation.py` as the location for Celery task definitions.
 - Each provider adapter must expose an `enqueue_generation_job(params)` method that returns a `job_id`.
 - The `.env.example` must include `CELERY_BROKER_URL` (e.g. `redis://localhost:6379/0`) and `CELERY_RESULT_BACKEND`.
-- Local development uses `docker compose up redis` to start Redis, then `uv run celery worker` to start workers.
+- Local development uses `docker compose up redis` to start Redis, then `make worker` to start workers.
 - Flower monitoring runs on a separate port (default `5555`) for local and staging visibility.
