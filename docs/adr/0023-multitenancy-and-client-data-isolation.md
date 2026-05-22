@@ -52,7 +52,7 @@ Testing must include cross-client isolation tests: a query authenticated as clie
 ## Impact on VOS Studio MCP
 
 - Enable RLS on all client-scoped tables in each migration file (ADR-0020).
-- Create a `src/services/database.ts` helper that sets `app.current_client_id` from the authenticated session before returning a database connection for use in a request.
+- Create a `src/vos_studio_mcp/services/database.py` helper that sets `app.current_client_id` from the authenticated session before returning a database connection for use in a request.
 - Never trust `client_id` from MCP tool input for authorization decisions — use it only for lookups, with RLS as the enforcement layer.
 - Add cross-client isolation as a required test category before Milestone 3 is considered complete.
 - Soft-delete columns (`deleted_at`) must be included in the initial schema for all client-scoped tables and referenced in RLS policies to prevent deleted records from appearing in queries.
