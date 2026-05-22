@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from joserfc import jwt
 from joserfc.errors import JoseError
-from joserfc.jwk import KeySet
+from joserfc.jwk import KeySet, OctKey
 from joserfc.registry import Header
 
 log = logging.getLogger(__name__)
@@ -16,10 +16,17 @@ _JWKS_TTL = 600  # seconds — re-fetch JWKS after 10 min to support key rotatio
 _jwks_cache: dict[str, tuple[KeySet, float]] = {}  # issuer_url → (keyset, fetched_at)
 
 _ALLOWED_ALGORITHMS = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
+_SUPABASE_ROLE_CLAIM = "role"
+_SUPABASE_REQUIRED_ROLE = "authenticated"
+
+
+# ---------------------------------------------------------------------------
+# JWKS-based validation (RS/ES — primary path for OAuth 2.1 IdPs)
+# ---------------------------------------------------------------------------
 
 
 async def validate_bearer_token(token: str, issuer_url: str) -> str | None:
-    """Validate a JWT against the issuer's JWKS. Returns client_id or None."""
+    """Validate a JWT against the issuer's JWKS endpoint. Returns client_id or None."""
     try:
         key_set = await _fetch_key_set(issuer_url)
         decoded = jwt.decode(token, key_set, algorithms=_ALLOWED_ALGORITHMS)
@@ -63,5 +70,42 @@ def clear_jwks_cache() -> None:
     _jwks_cache.clear()
 
 
+# ---------------------------------------------------------------------------
+# Supabase HS256 validation (symmetric — opt-in via SUPABASE_JWT_SECRET)
+# ---------------------------------------------------------------------------
+
+
+def validate_supabase_token(token: str, jwt_secret: str) -> str | None:
+    """Validate a Supabase-issued HS256 JWT using the project's JWT secret.
+
+    Only accepts tokens with role=authenticated. Extracts client_id from
+    app_metadata.client_id if present, otherwise falls back to sub (user UUID).
+    """
+    try:
+        oct_key = OctKey.import_key(jwt_secret.encode("utf-8"))
+        decoded = jwt.decode(token, oct_key, algorithms=["HS256"])
+        claims: dict[str, Any] = decoded.claims
+        _check_expiry(claims)
+        _check_supabase_role(claims)
+        return _extract_supabase_client_id(claims)
+    except JoseError as exc:
+        log.warning("supabase jwt validation failed", extra={"reason": str(exc)})
+        return None
+    except Exception as exc:
+        log.warning("supabase jwt validation error", extra={"reason": str(exc)})
+        return None
+
+
+def _check_supabase_role(claims: dict[str, Any]) -> None:
+    role = claims.get(_SUPABASE_ROLE_CLAIM)
+    if role != _SUPABASE_REQUIRED_ROLE:
+        raise ValueError(f"rejected Supabase role: {role!r}")
+
+
+def _extract_supabase_client_id(claims: dict[str, Any]) -> str | None:
+    app_meta: dict[str, Any] = claims.get("app_metadata") or {}
+    return app_meta.get("client_id") or claims.get("sub")
+
+
 # Suppress unused import — Header is re-exported for tests that need to inspect headers.
-__all__ = ["validate_bearer_token", "clear_jwks_cache", "Header"]
+__all__ = ["validate_bearer_token", "validate_supabase_token", "clear_jwks_cache", "Header"]

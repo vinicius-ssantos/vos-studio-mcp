@@ -149,3 +149,79 @@ def test_context_var_defaults_to_none_in_fresh_context() -> None:
 def test_context_var_set_and_get() -> None:
     set_current_client_id("acme-123")
     assert get_current_client_id() == "acme-123"
+
+
+# ---------------------------------------------------------------------------
+# Supabase HS256 mode (SUPABASE_JWT_SECRET set, OAUTH_ISSUER_URL empty)
+# ---------------------------------------------------------------------------
+
+_SUPABASE_SECRET = "super-secret-jwt-token-with-at-least-32-characters-long"
+_JWT_PATCH = "vos_studio_mcp.auth.middleware.validate_supabase_token"
+
+
+def test_supabase_mode_valid_token_sets_client_id() -> None:
+    captured: list[str | None] = []
+    app = _app(routes=False)
+
+    @app.get("/protected")
+    async def p() -> dict[str, str | None]:
+        captured.append(get_current_client_id())
+        return {"client_id": captured[-1]}
+
+    s = Settings(SUPABASE_JWT_SECRET=_SUPABASE_SECRET, OAUTH_ISSUER_URL="", DEV_BEARER_TOKEN="")
+    with (
+        patch(_PATCH, return_value=s),
+        patch(_JWT_PATCH, return_value="client-from-supabase"),
+        TestClient(app, raise_server_exceptions=False) as c,
+    ):
+        resp = c.get("/protected", headers={"Authorization": "Bearer some-hs256-token"})
+
+    assert resp.status_code == 200
+    assert captured[0] == "client-from-supabase"
+
+
+def test_supabase_mode_invalid_token_returns_401() -> None:
+    app = _app(routes=False)
+
+    @app.get("/protected")
+    async def p() -> dict[str, str]:
+        return {"ok": "yes"}
+
+    s = Settings(SUPABASE_JWT_SECRET=_SUPABASE_SECRET, OAUTH_ISSUER_URL="", DEV_BEARER_TOKEN="")
+    with (
+        patch(_PATCH, return_value=s),
+        patch(_JWT_PATCH, return_value=None),
+        TestClient(app, raise_server_exceptions=False) as c,
+    ):
+        resp = c.get("/protected", headers={"Authorization": "Bearer bad-token"})
+
+    assert resp.status_code == 401
+
+
+def test_jwks_mode_takes_precedence_when_both_configured() -> None:
+    """OAUTH_ISSUER_URL must be preferred over SUPABASE_JWT_SECRET when both are set."""
+    captured_calls: list[str] = []
+    app = _app(routes=False)
+
+    @app.get("/protected")
+    async def p() -> dict[str, str]:
+        return {"ok": "yes"}
+
+    def _fake_supabase(token: str, secret: str) -> str | None:
+        captured_calls.append("supabase")
+        return None
+
+    s = Settings(
+        OAUTH_ISSUER_URL="https://idp.example.com",
+        SUPABASE_JWT_SECRET=_SUPABASE_SECRET,
+        DEV_BEARER_TOKEN="",
+    )
+    with (
+        patch(_PATCH, return_value=s),
+        patch("vos_studio_mcp.auth.middleware.validate_bearer_token", return_value=None),
+        patch(_JWT_PATCH, side_effect=_fake_supabase),
+        TestClient(app, raise_server_exceptions=False) as c,
+    ):
+        c.get("/protected", headers={"Authorization": "Bearer tok"})
+
+    assert "supabase" not in captured_calls

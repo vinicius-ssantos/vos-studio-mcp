@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     oauth_issuer_url: str = Field(default="", alias="OAUTH_ISSUER_URL")
     oauth_client_id: str = Field(default="", alias="OAUTH_CLIENT_ID")
     oauth_client_secret: str = Field(default="", alias="OAUTH_CLIENT_SECRET")
+    # Supabase HS256 mode: set this when using Supabase's default JWT secret (Project Settings → API → JWT Secret).
+    # If OAUTH_ISSUER_URL is also set, JWKS validation takes precedence.
+    supabase_jwt_secret: str = Field(default="", alias="SUPABASE_JWT_SECRET")
     dev_bearer_token: str = Field(default="", alias="DEV_BEARER_TOKEN")
     dev_client_id: str = Field(
         default="00000000-0000-0000-0000-000000000001", alias="DEV_CLIENT_ID"

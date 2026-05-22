@@ -13,6 +13,7 @@ from vos_studio_mcp.auth.jwt import (
     _JWKS_TTL,
     clear_jwks_cache,
     validate_bearer_token,
+    validate_supabase_token,
 )
 
 # Generate test RSA key pair once per module — 2048-bit is acceptable for unit tests.
@@ -165,3 +166,50 @@ async def test_different_issuers_cached_independently() -> None:
 
     assert route_a.call_count == 1
     assert route_b.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# validate_supabase_token — Supabase HS256 mode
+# ---------------------------------------------------------------------------
+
+_SUPABASE_SECRET = "super-secret-jwt-token-with-at-least-32-characters-long"
+
+
+def _supabase_token(claims: dict) -> str:
+    key = OctKey.import_key(_SUPABASE_SECRET.encode("utf-8"))
+    return joserfc_jwt.encode({"alg": "HS256"}, claims, key)
+
+
+def test_supabase_returns_sub_for_authenticated_user() -> None:
+    tok = _supabase_token({"sub": "user-uuid-1", "role": "authenticated", "exp": int(time.time()) + 3600})
+    assert validate_supabase_token(tok, _SUPABASE_SECRET) == "user-uuid-1"
+
+
+def test_supabase_prefers_app_metadata_client_id() -> None:
+    tok = _supabase_token({
+        "sub": "user-uuid-2",
+        "role": "authenticated",
+        "exp": int(time.time()) + 3600,
+        "app_metadata": {"client_id": "brand-client-abc"},
+    })
+    assert validate_supabase_token(tok, _SUPABASE_SECRET) == "brand-client-abc"
+
+
+def test_supabase_rejects_anon_role() -> None:
+    tok = _supabase_token({"sub": "user-uuid-3", "role": "anon", "exp": int(time.time()) + 3600})
+    assert validate_supabase_token(tok, _SUPABASE_SECRET) is None
+
+
+def test_supabase_rejects_service_role() -> None:
+    tok = _supabase_token({"sub": "service", "role": "service_role", "exp": int(time.time()) + 3600})
+    assert validate_supabase_token(tok, _SUPABASE_SECRET) is None
+
+
+def test_supabase_rejects_expired_token() -> None:
+    tok = _supabase_token({"sub": "user-1", "role": "authenticated", "exp": int(time.time()) - 60})
+    assert validate_supabase_token(tok, _SUPABASE_SECRET) is None
+
+
+def test_supabase_rejects_wrong_secret() -> None:
+    tok = _supabase_token({"sub": "user-1", "role": "authenticated", "exp": int(time.time()) + 3600})
+    assert validate_supabase_token(tok, "wrong-secret-that-is-long-enough-for-hs256") is None
