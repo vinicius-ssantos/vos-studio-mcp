@@ -68,6 +68,7 @@ async def test_asset(db_session):  # type: ignore[misc]
     await db_session.execute(text("SET LOCAL row_security = off"))
 
     client_id = uuid.uuid4()
+    brand_kit_id = uuid.uuid4()
     sprint_id = uuid.uuid4()
     asset_id = uuid.uuid4()
     job_id = f"integ-{uuid.uuid4().hex[:8]}"
@@ -80,15 +81,26 @@ async def test_asset(db_session):  # type: ignore[misc]
         {"id": str(client_id), "name": "Integ Client", "industry": "integration-test"},
     )
     await db_session.execute(
+        text("INSERT INTO brand_kits (id, client_id, name) VALUES (:id, :cid, :name) ON CONFLICT DO NOTHING"),
+        {"id": str(brand_kit_id), "cid": str(client_id), "name": "Integration Brand Kit"},
+    )
+    await db_session.execute(
         text(
-            "INSERT INTO sprints (id, client_id, sprint_name, sprint_status,"
-            " max_spend_usd, spent_usd) VALUES (:id, :cid, :name, :status, :max, :spent)"
+            "INSERT INTO sprints (id, client_id, brand_kit_id, product_name,"
+            " campaign_objective, target_audience, brief, sprint_status,"
+            " max_spend_usd, spent_usd)"
+            " VALUES (:id, :cid, :bkid, :product_name, :objective, :audience,"
+            " :brief, :status, :max, :spent)"
             " ON CONFLICT DO NOTHING"
         ),
         {
             "id": str(sprint_id),
             "cid": str(client_id),
-            "name": "Integration Sprint",
+            "bkid": str(brand_kit_id),
+            "product_name": "Integration Product",
+            "objective": "Integration test objective",
+            "audience": "Integration test audience",
+            "brief": "Integration test brief",
             "status": "open",
             "max": 10.0,
             "spent": 0.0,
@@ -119,6 +131,7 @@ async def test_asset(db_session):  # type: ignore[misc]
     await db_session.execute(text("SET LOCAL row_security = off"))
     await db_session.execute(text("DELETE FROM assets WHERE id = :id"), {"id": str(asset_id)})
     await db_session.execute(text("DELETE FROM sprints WHERE id = :id"), {"id": str(sprint_id)})
+    await db_session.execute(text("DELETE FROM brand_kits WHERE id = :id"), {"id": str(brand_kit_id)})
     await db_session.execute(
         text("DELETE FROM clients WHERE id = :id"), {"id": str(client_id)}
     )
