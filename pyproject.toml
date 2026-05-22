@@ -73,12 +73,3 @@ markers = [
 source = ["src/vos_studio_mcp"]
 omit = ["tests/*"]
 
-[tool.uv.scripts]
-dev       = "uvicorn vos_studio_mcp.server:app --reload --port 8000"
-worker    = "celery -A vos_studio_mcp.tasks.celery_app:celery_app worker --loglevel=info"
-flower    = "celery -A vos_studio_mcp.tasks.celery_app:celery_app flower --port=5555"
-migrate   = "alembic upgrade head"
-typecheck = "mypy src/"
-lint      = "ruff check src/ tests/"
-fmt       = "ruff format src/ tests/"
-test      = "pytest"
