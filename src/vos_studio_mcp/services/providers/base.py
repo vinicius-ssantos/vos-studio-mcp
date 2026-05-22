@@ -71,6 +71,7 @@ class JobStatus:
     status: Literal["queued", "running", "completed", "failed", "timed_out"]
     progress: float | None = None   # 0.0–1.0 if provider supports it
     error: str | None = None
+    media_url: str | None = None    # populated by provider when status is "completed"
 
 
 @runtime_checkable

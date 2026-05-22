@@ -15,6 +15,7 @@ from vos_studio_mcp.routes.webhooks import router
 _ADAPTER_PATCH = "vos_studio_mcp.routes.webhooks.get_adapter"
 _SESSION_PATCH = "vos_studio_mcp.routes.webhooks.get_session"
 _SETTINGS_PATCH = "vos_studio_mcp.services.providers.higgsfield.get_settings"
+_UPLOAD_TASK_PATCH = "vos_studio_mcp.routes.webhooks.upload_video_to_storage"
 
 
 def _app() -> FastAPI:
@@ -98,7 +99,9 @@ def test_completed_updates_asset_status_and_storage_url() -> None:
 
     with (
         patch(_SETTINGS_PATCH, return_value=_settings()),
-        patch(_SESSION_PATCH, return_value=session_ctx),TestClient(_app()) as c
+        patch(_SESSION_PATCH, return_value=session_ctx),
+        patch(_UPLOAD_TASK_PATCH),
+        TestClient(_app()) as c,
     ):
         resp = c.post(
             "/webhooks/higgsfield",
@@ -241,7 +244,9 @@ def test_falls_back_to_id_field_for_job_id() -> None:
 
     with (
         patch(_SETTINGS_PATCH, return_value=_settings()),
-        patch(_SESSION_PATCH, return_value=session_ctx),TestClient(_app()) as c
+        patch(_SESSION_PATCH, return_value=session_ctx),
+        patch(_UPLOAD_TASK_PATCH),
+        TestClient(_app()) as c,
     ):
         resp = c.post(
             "/webhooks/higgsfield",

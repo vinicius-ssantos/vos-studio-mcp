@@ -12,6 +12,7 @@ from vos_studio_mcp.schemas.api_video import ApiVideoInput, ApiVideoResponse
 from vos_studio_mcp.services.database import get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
 from vos_studio_mcp.services.providers.base import BudgetLimit, GenerationParams
+from vos_studio_mcp.tasks.poll_video import poll_video_job
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +91,8 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
         sprint.spent_usd += estimate.estimated_usd
         await session.commit()
         await session.refresh(asset)
+
+    poll_video_job.delay(str(asset.id))
 
     log.info(
         "api_video.queued",

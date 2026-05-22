@@ -1,5 +1,6 @@
 """Webhook receiver for provider callbacks (ADR-0028)."""
 
+import json
 import logging
 from typing import Any, Literal
 
@@ -9,6 +10,7 @@ from sqlalchemy import text
 from db.models import Asset
 from vos_studio_mcp.services.database import bypass_rls, get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
+from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +43,6 @@ async def higgsfield_webhook(request: Request) -> dict[str, bool]:
 
     payload: dict[str, Any] = {}
     try:
-        import json
         payload = json.loads(body)
     except Exception:
         log.warning("higgsfield_webhook.invalid_json")
@@ -98,4 +99,8 @@ async def higgsfield_webhook(request: Request) -> dict[str, bool]:
         "higgsfield_webhook.processed",
         extra={"job_id": job_id, "status": mapped_status},
     )
+
+    if mapped_status == "completed" and media_url:
+        upload_video_to_storage.delay(str(asset_id), media_url)
+
     return {"received": True}
