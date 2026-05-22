@@ -73,14 +73,16 @@ Webhook payloads are external untrusted input. The handler must validate the pay
 |-----------|--------|
 | `verify_webhook_signature` in `ProviderAdapter` Protocol | ✅ Implemented |
 | `HiggsFieldAdapter.verify_webhook_signature` (HMAC-SHA256) | ✅ Implemented |
-| `POST /webhooks/{provider_id}` FastAPI endpoint | ⏳ Issue #6 item B |
-| Celery `poll_video_job` task | ⏳ Issue #6 item C |
-| Celery `upload_video_to_storage` task | ⏳ Issue #6 item D |
+| `POST /webhooks/higgsfield` FastAPI endpoint | ✅ Implemented (Issue #6 item B) |
+| Celery `poll_video_job` task | ✅ Implemented (Issue #6 item C) |
+| Celery `upload_video_to_storage` task | ✅ Implemented (Issue #6 item D) |
+| `get_video_job_status` MCP tool | ✅ Implemented (Issue #6 item E) |
 
 ## Impact on VOS Studio MCP
 
-- Create `src/vos_studio_mcp/routes/webhooks.py` with provider-specific handlers.
-- Register webhook routes on the FastAPI app in `server.py`, bypassing auth middleware.
-- Add `WEBHOOK_SECRET_HIGGSFIELD` to `.env.example` (already present).
-- Update Celery polling tasks to check DB state before calling provider API.
-- Target: next milestone, tracked in Issue #6.
+- `src/vos_studio_mcp/routes/webhooks.py` — `POST /webhooks/higgsfield` with HMAC-SHA256 guard.
+- `src/vos_studio_mcp/tasks/poll_video.py` — `poll_video_job` Celery task (30 s interval, 60 retries).
+- `src/vos_studio_mcp/tasks/upload_video.py` — `upload_video_to_storage` Celery task (httpx + boto3).
+- `src/vos_studio_mcp/tools/get_video_job_status.py` — MCP tool, reads DB only.
+- Webhook routes registered in `server.py`, `/webhooks/` prefix exempt from Bearer auth middleware.
+- `WEBHOOK_SECRET_HIGGSFIELD` documented in `.env.example`.
