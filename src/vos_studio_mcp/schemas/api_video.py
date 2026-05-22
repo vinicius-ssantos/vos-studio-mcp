@@ -26,3 +26,13 @@ class ApiVideoResponse(BaseModel):
     estimated_cost_usd: float
     summary: str
     next_action: str
+
+
+class VideoJobStatusResponse(BaseModel):
+    status: str
+    asset_id: str
+    generation_status: str
+    storage_url: str | None
+    provider_job_id: str | None
+    summary: str
+    next_action: str

@@ -8,8 +8,8 @@ from sqlalchemy import func, select
 from db.models import Asset, Sprint
 from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
-from vos_studio_mcp.schemas.api_video import ApiVideoInput, ApiVideoResponse
-from vos_studio_mcp.services.database import get_session, set_tenant_context
+from vos_studio_mcp.schemas.api_video import ApiVideoInput, ApiVideoResponse, VideoJobStatusResponse
+from vos_studio_mcp.services.database import get_asset_with_client, get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
 from vos_studio_mcp.services.providers.base import BudgetLimit, GenerationParams
 from vos_studio_mcp.tasks.poll_video import poll_video_job
@@ -115,4 +115,43 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
             f"Job ID: {result.job_id}. Estimated cost: ${estimate.estimated_usd:.2f}."
         ),
         next_action="get_video_job_status",
+    )
+
+
+_NEXT_ACTION: dict[str, str] = {
+    "pending": "get_video_job_status",
+    "processing": "get_video_job_status",
+    "completed": "prepare_dashboard_pack",
+    "failed": "request_api_video",
+    "manual": "list_sprint_assets",
+}
+
+_SUMMARY: dict[str, str] = {
+    "pending": "Video generation is queued. Poll again shortly.",
+    "processing": "Video generation is in progress. Poll again shortly.",
+    "completed": "Video is ready in storage.",
+    "failed": "Video generation failed. You may retry with request_api_video.",
+    "manual": "Asset was registered manually — no generation job.",
+}
+
+
+async def get_video_job_status(asset_id: str) -> VideoJobStatusResponse:
+    """Return generation status for an asset without calling the provider API."""
+    async with get_session() as session:
+        asset, client_id = await get_asset_with_client(session, asset_id)
+
+    if asset is None or client_id is None:
+        raise VosError(ErrorCode.NOT_FOUND, f"Asset {asset_id} not found")
+
+    assert_owns_client(client_id)
+
+    gen_status = asset.generation_status
+    return VideoJobStatusResponse(
+        status="ok",
+        asset_id=asset_id,
+        generation_status=gen_status,
+        storage_url=asset.storage_url,
+        provider_job_id=asset.provider_job_id,
+        summary=_SUMMARY.get(gen_status, f"Unknown status: {gen_status}"),
+        next_action=_NEXT_ACTION.get(gen_status, "get_video_job_status"),
     )
