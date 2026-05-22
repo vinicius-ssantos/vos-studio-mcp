@@ -48,8 +48,8 @@ async def db_session():  # type: ignore[misc]
     """Async SQLAlchemy session connected to the real DB."""
     _require_db()
 
-    from sqlalchemy.pool import NullPool
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
     engine = create_async_engine(os.environ["DATABASE_URL"], echo=False, poolclass=NullPool)
     factory = async_sessionmaker(engine, expire_on_commit=False)
