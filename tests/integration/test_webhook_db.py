@@ -155,16 +155,11 @@ async def _post_higgsfield_webhook(body: bytes, signature: str):  # type: ignore
     transport = ASGITransport(app=app)
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post(
+        return await client.post(
             "/webhooks/higgsfield",
             content=body,
             headers={"X-Higgsfield-Signature": signature},
         )
-
-    from vos_studio_mcp.services import database
-
-    await database._engine.dispose()
-    return response
 
 
 # ---------------------------------------------------------------------------
