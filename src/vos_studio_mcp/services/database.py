@@ -26,3 +26,15 @@ async def set_tenant_context(session: AsyncSession, client_id: str) -> None:
         text("SELECT set_config('app.current_client_id', :cid, TRUE)"),
         {"cid": client_id},
     )
+
+
+async def bypass_rls(session: AsyncSession) -> None:
+    """Disable row-level security for the current transaction.
+
+    Requires the DB user to have BYPASSRLS privilege (Supabase service role
+    in production; postgres superuser in development). Used exclusively by
+    the webhook handler to look up assets by provider_job_id without a
+    client context. Call set_tenant_context afterwards to re-apply RLS for
+    any subsequent writes.
+    """
+    await session.execute(text("SET LOCAL row_security = off"))
