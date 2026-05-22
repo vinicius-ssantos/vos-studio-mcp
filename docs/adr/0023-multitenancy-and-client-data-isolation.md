@@ -39,7 +39,7 @@ Soft-delete (`deleted_at` timestamp) is the standard for removing client records
 - **Separate schema per client**: strong isolation, but operationally complex. Schema creation, migration (ADR-0020), and connection pooling become significantly harder at scale. Rejected.
 - **Separate database per client**: maximum isolation, but prohibitively expensive and operationally unmanageable for an agency with many clients. Rejected.
 - **Application-level filtering only (WHERE client_id = ?)**: relies on every query in every tool handler being correct. A single missing filter leaks data. Rejected as the sole mechanism — application-level filters remain as defense-in-depth but RLS is the enforcement layer.
-- **RLS via Supabase**: selected. Enforced at the database level, auditable, compatible with Drizzle ORM (ADR-0020), and supported natively in Supabase.
+- **RLS via Supabase**: selected. Enforced at the database level, auditable, compatible with SQLAlchemy/Alembic migrations (ADR-0020), and supported natively in Supabase.
 
 ## Consequences
 
