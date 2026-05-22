@@ -36,3 +36,15 @@ class SprintResponse(BaseModel):
     summary: str
     budget_status: BudgetStatus
     next_action: str
+
+
+class SprintStatusResponse(BaseModel):
+    status: str
+    sprint_id: str
+    product_name: str
+    mode: str
+    sprint_status: str
+    budget_status: BudgetStatus
+    asset_count: int
+    summary: str
+    next_action: str

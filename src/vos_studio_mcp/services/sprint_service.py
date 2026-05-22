@@ -3,8 +3,15 @@
 import logging
 import uuid
 
-from db.models import Sprint
-from vos_studio_mcp.schemas.sprint import BudgetStatus, SprintInput, SprintResponse
+from sqlalchemy import func, select
+
+from db.models import Asset, Sprint
+from vos_studio_mcp.schemas.sprint import (
+    BudgetStatus,
+    SprintInput,
+    SprintResponse,
+    SprintStatusResponse,
+)
 from vos_studio_mcp.services.database import get_session, set_tenant_context
 
 log = logging.getLogger(__name__)
@@ -56,4 +63,47 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
             alert=alert,
         ),
         next_action="prepare_dashboard_pack",
+    )
+
+
+async def get_sprint_status(sprint_id: str) -> SprintStatusResponse:
+    sprint_uuid = uuid.UUID(sprint_id)
+    async with get_session() as session:
+        sprint = await session.get(Sprint, sprint_uuid)
+        if sprint is None:
+            raise ValueError(f"Sprint {sprint_id} not found")
+
+        asset_count_result = await session.execute(
+            select(func.count()).where(Asset.sprint_id == sprint_uuid)
+        )
+        asset_count = asset_count_result.scalar_one()
+
+    alert = sprint.spent_usd >= sprint.max_spend_usd * sprint.alert_threshold_pct
+    remaining = sprint.max_spend_usd - sprint.spent_usd
+
+    if sprint.sprint_status == "open" and not alert:
+        next_action = "prepare_dashboard_pack"
+    elif alert:
+        next_action = "review_budget_before_continuing"
+    else:
+        next_action = "no_action_sprint_closed"
+
+    return SprintStatusResponse(
+        status="ok",
+        sprint_id=sprint_id,
+        product_name=sprint.product_name,
+        mode=sprint.mode,
+        sprint_status=sprint.sprint_status,
+        budget_status=BudgetStatus(
+            approved_usd=sprint.max_spend_usd,
+            spent_usd=sprint.spent_usd,
+            remaining_usd=remaining,
+            alert=alert,
+        ),
+        asset_count=asset_count,
+        summary=(
+            f"Sprint '{sprint.product_name}' is {sprint.sprint_status} with "
+            f"{asset_count} asset(s) registered and ${remaining:.2f} remaining."
+        ),
+        next_action=next_action,
     )

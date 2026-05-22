@@ -3,8 +3,10 @@
 import logging
 import uuid
 
+from sqlalchemy import select
+
 from db.models import Asset
-from vos_studio_mcp.schemas.asset import AssetInput, AssetResponse
+from vos_studio_mcp.schemas.asset import AssetInput, AssetListItem, AssetListResponse, AssetResponse
 from vos_studio_mcp.services.database import get_session
 
 log = logging.getLogger(__name__)
@@ -38,4 +40,36 @@ async def register_manual_asset(data: AssetInput) -> AssetResponse:
         sprint_id=data.sprint_id,
         summary=f"Asset registered for sprint {data.sprint_id} via {data.provider}.",
         next_action="register_manual_asset",
+    )
+
+
+async def list_sprint_assets(sprint_id: str) -> AssetListResponse:
+    sprint_uuid = uuid.UUID(sprint_id)
+    async with get_session() as session:
+        result = await session.execute(
+            select(Asset).where(Asset.sprint_id == sprint_uuid).order_by(Asset.created_at)
+        )
+        rows = list(result.scalars().all())
+
+    items = [
+        AssetListItem(
+            asset_id=str(row.id),
+            provider=row.provider,
+            prompt_version=row.prompt_version,
+            preset_version=row.preset_version,
+            storage_url=row.storage_url,
+            preview_url=row.preview_url,
+            width=row.width,
+            height=row.height,
+            format=row.format,
+        )
+        for row in rows
+    ]
+
+    return AssetListResponse(
+        status="ok",
+        sprint_id=sprint_id,
+        total=len(items),
+        assets=items,
+        next_action="prepare_dashboard_pack" if items else "prepare_dashboard_pack",
     )

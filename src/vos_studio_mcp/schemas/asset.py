@@ -28,3 +28,23 @@ class AssetResponse(BaseModel):
     sprint_id: str
     summary: str
     next_action: str
+
+
+class AssetListItem(BaseModel):
+    asset_id: str
+    provider: str
+    prompt_version: str
+    preset_version: str
+    storage_url: str
+    preview_url: str | None = None
+    width: int | None = None
+    height: int | None = None
+    format: str | None = None
+
+
+class AssetListResponse(BaseModel):
+    status: str
+    sprint_id: str
+    total: int
+    assets: list[AssetListItem]
+    next_action: str
