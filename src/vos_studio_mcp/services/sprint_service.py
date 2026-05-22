@@ -6,6 +6,7 @@ import uuid
 from sqlalchemy import func, select
 
 from db.models import Asset, Sprint
+from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.sprint import (
     BudgetStatus,
@@ -21,6 +22,7 @@ log = logging.getLogger(__name__)
 
 
 async def create_creative_sprint(data: SprintInput) -> SprintResponse:
+    assert_owns_client(data.client_id)
     async with get_session() as session:
         await set_tenant_context(session, data.client_id)
         sprint = Sprint(

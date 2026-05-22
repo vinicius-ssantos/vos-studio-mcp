@@ -4,6 +4,7 @@ import logging
 import uuid
 
 from db.models import BrandKit
+from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.schemas.brand_kit import BrandKitInput, BrandKitResponse
 from vos_studio_mcp.services.database import get_session, set_tenant_context
 
@@ -11,6 +12,7 @@ log = logging.getLogger(__name__)
 
 
 async def save_brand_kit(data: BrandKitInput) -> BrandKitResponse:
+    assert_owns_client(data.client_id)
     async with get_session() as session:
         await set_tenant_context(session, data.client_id)
         brand_kit = BrandKit(
