@@ -1,36 +1,51 @@
 # ADR-0025 — Performance feedback loop and creative learning
 
-Status: Accepted  
-Date: 2026-05-21
+Status: Amended  
+Date: 2026-05-21  
+Amended: 2026-05-22
 
 ## Context
 
 VOS Studio MCP currently ends its workflow at delivery: brief → sprint → generation → QA → delivery pack. For a performance creative agency, this is incomplete. The value of creative production is measured by what happens after delivery — which assets ran, which converted, which angles resonated with the target audience.
 
-Without a feedback loop, every sprint starts from zero. The system cannot distinguish a hook that consistently drives CTR from one that has been tried and failed. Proven angles are lost in spreadsheets or in the memory of individual team members. The brand kit's `performance` block (ADR-0024) has nowhere to pull data from.
+Without a feedback loop, every sprint starts from zero. The system cannot distinguish a hook that consistently drives CTR from one that has been tried and failed. Proven angles are lost in spreadsheets or in the memory of individual team members. The brand kit's `performance_memory` block (ADR-0024) has nowhere to pull data from.
 
 The missing loop is: **deliver → measure → record → inform next sprint**.
 
-This feedback loop is what transforms the MCP from a production system into an institutional creative intelligence system — one that gets better over time and creates a compounding advantage for the agency.
-
 ## Decision
 
-Introduce a `PerformanceRecord` entity that links creative assets to their measured results on distribution platforms.
+**Phase 1 (implemented — Milestone 4):** Introduce lightweight performance recording directly on the `Asset` entity. The operator records results via the `record_asset_performance` tool after a campaign runs:
 
 ```python
-from typing import Literal
-from pydantic import BaseModel, Field
+class PerformanceInput(BaseModel):
+    asset_id: str
+    sprint_id: str
+    client_id: str
+    brand_kit_id: str
+    performance_score: int           # 1–10
+    performance_label: Literal["top_performer", "average", "underperformer"]
+    notes: str | None = None
+    angle_label: str | None = None   # appended to brand kit proven_angles if top_performer
+    hook_label: str | None = None    # appended to brand kit proven_hooks if top_performer
+    description: str | None = None   # appended to brand kit failed_approaches if underperformer
+```
 
+Performance data is stored as columns on the `assets` table (`performance_score`, `performance_label`, `performance_notes`) — no separate `PerformanceRecord` table in Phase 1.
 
+The feedback loop closes through brand kit enrichment: when `performance_label` is `top_performer`, the service appends `angle_label` to `brand_kit.performance_memory["proven_angles"]` and `hook_label` to `brand_kit.performance_memory["proven_hooks"]`. When `performance_label` is `underperformer`, `description` is appended to `brand_kit.performance_memory["failed_approaches"]`. These mutations happen in the same transaction with no separate approval step — the operator's explicit call to `record_asset_performance` is the approval act.
+
+**Phase 2 (deferred):** A full `PerformanceRecord` entity with structured distribution context (`platform`, `ad_account_id`, `campaign_id`, `start_date`) and quantitative metrics (`impressions`, `clicks`, `ctr`, `spend_usd`, `conversions`, `roas`, `thumb_stop_rate`) will be introduced when platform API integrations are available (Meta Marketing API, Google Ads API, TikTok Business API). This will enable the `create_creative_sprint` tool to return a `performance_context` block with `top_angles`, `proven_hooks`, and `avoid` lists derived from historical records — giving the agent immediate creative direction grounded in what actually worked for this client.
+
+Phase 2 schema (deferred):
+
+```python
 class DistributionContext(BaseModel):
     platform: str
     ad_account_id: str | None = None
     campaign_id: str | None = None
     ad_set_id: str | None = None
-    ad_id: str | None = None
     start_date: str
     end_date: str | None = None
-
 
 class PerformanceMetrics(BaseModel):
     impressions: int | None = None
@@ -38,19 +53,9 @@ class PerformanceMetrics(BaseModel):
     ctr: float | None = None
     spend_usd: float | None = None
     conversions: int | None = None
-    cpa_usd: float | None = None
     roas: float | None = None
     thumb_stop_rate: float | None = None
     hook_retention_rate: float | None = None
-    quality_score: str | None = None
-
-
-class PerformanceClassification(BaseModel):
-    performance_tier: Literal["top", "average", "underperformer", "untested"]
-    winning_elements: list[str] = Field(default_factory=list)
-    failure_reasons: list[str] = Field(default_factory=list)
-    notes: str | None = None
-
 
 class PerformanceRecord(BaseModel):
     id: str
@@ -60,56 +65,33 @@ class PerformanceRecord(BaseModel):
     brand_kit_id: str
     distribution: DistributionContext
     metrics: PerformanceMetrics
-    classification: PerformanceClassification
+    performance_label: Literal["top_performer", "average", "underperformer"]
+    notes: str | None = None
     recorded_at: str
-    recorded_by: str
 ```
-
-
-Performance records are created via a dedicated tool `record_performance` and are **never** auto-generated from platform APIs in the initial implementation. The operator registers results manually or via a future integration tool. This keeps the system useful before platform API integrations exist.
-
-The feedback loop closes through two mechanisms:
-
-**1. Brand kit enrichment (automatic):** When a `PerformanceRecord` is classified as `top`, the system automatically proposes additions to the brand kit's `performance.provenAngles`, `performance.provenHooks`, and `performance.topAssetRefs`. The operator approves before the brand kit is updated (ADR-0005 approval model applies).
-
-**2. Sprint initialization (query-based):** When `create_creative_sprint` is called, the tool queries `PerformanceRecord` for the same client and returns a `performance_context` block in the response:
-
-```json
-{
-  "sprint_id": "spr_789",
-  "performance_context": {
-    "top_angles": ["urgency + scarcity", "social proof + transformation"],
-    "proven_hooks": ["Você ainda está perdendo dinheiro com..."],
-    "avoid": ["lifestyle without product", "soft CTAs"],
-    "top_asset_refs": ["asset_111", "asset_222"]
-  },
-  "next_action": "prepare_dashboard_pack"
-}
-```
-
-This gives the agent (and human operator) immediate creative direction grounded in what actually worked for this client.
 
 ## Alternatives considered
 
-- **Auto-pull from platform APIs (Meta, Google, TikTok)**: the correct long-term approach, but requires OAuth integrations with each ad platform. Too much complexity for the current stage. Deferred to a future milestone.
+- **Auto-pull from platform APIs (Meta, Google, TikTok)**: the correct long-term approach, but requires OAuth integrations with each ad platform. Deferred to Phase 2.
 - **No performance feedback**: rejected. This is the most important strategic differentiator of the system. Without it, the MCP is a production tool, not a learning system.
-- **Free-text notes on assets**: simple but unqueryable. Cannot inform sprint creation programmatically. Rejected.
-- **Manual records with structured schema and query-driven feedback**: selected. Usable immediately, queryable, extensible to API integration later.
+- **Free-text notes on assets**: simple but unqueryable. Cannot inform sprint creation programmatically. Rejected as the only mechanism.
+- **Separate `PerformanceRecord` table from day one**: rejected for Phase 1 — adds schema complexity before the query patterns that justify it (platform metrics, distribution context) are implemented. Columns on `assets` are sufficient for the initial feedback loop.
+- **Approval gate before brand kit enrichment**: considered, per ADR-0005. Rejected for Phase 1 — the operator's explicit invocation of `record_asset_performance` is itself the approval act. A separate approval step adds friction without security benefit for internal-operator actions.
 
 ## Consequences
 
-The `PerformanceRecord` entity creates a new data category that must be protected under the same RLS rules as client sprints and assets (ADR-0023). Performance data is commercially sensitive — a client's CTR and ROAS data must not be visible to other clients.
+The quality of the learning loop depends entirely on the consistency of record input. If operators do not call `record_asset_performance` after campaigns run, the brand kit's `performance_memory` stays empty. Adoption of this tool must be embedded in the agency's delivery workflow.
 
-The quality of the learning loop depends entirely on the consistency of record input. If operators do not record performance data, the brand kit's `performance` block stays empty and sprint initialization returns no context. Adoption of `record_performance` must be part of the agency's delivery workflow, not optional.
+Phase 2 `PerformanceRecord` records must be protected under the same RLS rules as sprints and assets (ADR-0023) — performance data (CTR, ROAS, spend) is commercially sensitive.
 
-Platform API integrations (Meta Marketing API, Google Ads API, TikTok Business API) are the natural next step and should be planned as a Milestone 6 scope.
+## Implementation
+
+- `src/vos_studio_mcp/schemas/performance.py` — `PerformanceInput` / `PerformanceResponse`
+- `src/vos_studio_mcp/services/performance_service.py` — `record_asset_performance()` service
+- `src/vos_studio_mcp/tools/record_asset_performance.py` — MCP tool
+- `db/migrations/versions/0002_add_performance_fields.py` — adds `performance_score`, `performance_label`, `performance_notes` to `assets` and `performance_memory` JSONB to `brand_kits`
 
 ## Impact on VOS Studio MCP
 
-- Create `src/vos_studio_mcp/schemas/performance.py` with the full Pydantic schema.
-- Create `src/vos_studio_mcp/tools/record_performance.py` as a new tool in Milestone 3.
-- Update `src/vos_studio_mcp/tools/create_creative_sprint.py` to query performance records and return `performance_context` in the response.
-- Update `src/vos_studio_mcp/services/database.py` to include a `get_top_performers(client_id, brand_kit_id)` query helper.
-- Add `performance` to `src/vos_studio_mcp/schemas/brand_kit.py` as a derived read-only block populated from `PerformanceRecord`.
-- Add `performanceRecord` RLS policy to Milestone 3 schema migrations.
-- The brand kit update from a `top` performance record must go through the existing approval model (ADR-0005) before being committed.
+- Phase 2: create a `performance_records` table with RLS, add `get_top_performers(client_id, brand_kit_id)` query helper, update `create_creative_sprint` to return a `performance_context` block.
+- Phase 2: add platform API integrations (Meta Marketing API, Google Ads API, TikTok Business API) to populate `PerformanceRecord` automatically.
