@@ -92,8 +92,8 @@ async def two_clients(engine):  # type: ignore[misc]
             (client_b, "Client B"),
         ]:
             await session.execute(
-                text("INSERT INTO clients (id, name, industry) VALUES (:id, :name, :industry)"),
-                {"id": str(cid), "name": name, "industry": "integration-test"},
+                text("INSERT INTO clients (id, name) VALUES (:id, :name)"),
+                {"id": str(cid), "name": name},
             )
 
         for bkid, cid, name in [
