@@ -85,13 +85,13 @@ async def two_clients(engine):  # type: ignore[misc]
     async with factory() as session:
         await session.execute(text("SET LOCAL row_security = off"))
 
-        for cid, name, slug in [
-            (client_a, "Client A", f"client-a-{client_a.hex[:6]}"),
-            (client_b, "Client B", f"client-b-{client_b.hex[:6]}"),
+        for cid, name in [
+            (client_a, "Client A"),
+            (client_b, "Client B"),
         ]:
             await session.execute(
-                text("INSERT INTO clients (id, name, slug) VALUES (:id, :name, :slug)"),
-                {"id": str(cid), "name": name, "slug": slug},
+                text("INSERT INTO clients (id, name) VALUES (:id, :name)"),
+                {"id": str(cid), "name": name},
             )
 
         for sid, cid, sname in [
