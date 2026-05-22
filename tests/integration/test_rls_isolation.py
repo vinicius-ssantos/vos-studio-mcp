@@ -77,6 +77,8 @@ async def two_clients(engine):  # type: ignore[misc]
 
     client_a = uuid.uuid4()
     client_b = uuid.uuid4()
+    brand_kit_a = uuid.uuid4()
+    brand_kit_b = uuid.uuid4()
     sprint_a = uuid.uuid4()
     sprint_b = uuid.uuid4()
     asset_a = uuid.uuid4()
@@ -94,16 +96,36 @@ async def two_clients(engine):  # type: ignore[misc]
                 {"id": str(cid), "name": name, "industry": "integration-test"},
             )
 
-        for sid, cid, sname in [
-            (sprint_a, client_a, "Sprint A"),
-            (sprint_b, client_b, "Sprint B"),
+        for bkid, cid, name in [
+            (brand_kit_a, client_a, "Brand Kit A"),
+            (brand_kit_b, client_b, "Brand Kit B"),
+        ]:
+            await session.execute(
+                text("INSERT INTO brand_kits (id, client_id, name) VALUES (:id, :cid, :name)"),
+                {"id": str(bkid), "cid": str(cid), "name": name},
+            )
+
+        for sid, cid, bkid, product_name in [
+            (sprint_a, client_a, brand_kit_a, "Sprint A Product"),
+            (sprint_b, client_b, brand_kit_b, "Sprint B Product"),
         ]:
             await session.execute(
                 text(
-                    "INSERT INTO sprints (id, client_id, sprint_name, sprint_status,"
-                    " max_spend_usd, spent_usd) VALUES (:id, :cid, :name, 'open', 10, 0)"
+                    "INSERT INTO sprints (id, client_id, brand_kit_id, product_name,"
+                    " campaign_objective, target_audience, brief, sprint_status,"
+                    " max_spend_usd, spent_usd)"
+                    " VALUES (:id, :cid, :bkid, :product_name, :objective, :audience,"
+                    " :brief, 'open', 10, 0)"
                 ),
-                {"id": str(sid), "cid": str(cid), "name": sname},
+                {
+                    "id": str(sid),
+                    "cid": str(cid),
+                    "bkid": str(bkid),
+                    "product_name": product_name,
+                    "objective": "Integration test objective",
+                    "audience": "Integration test audience",
+                    "brief": "Integration test brief",
+                },
             )
 
         for aid, sid, prov in [(asset_a, sprint_a, "higgsfield"), (asset_b, sprint_b, "higgsfield")]:
@@ -133,6 +155,8 @@ async def two_clients(engine):  # type: ignore[misc]
             await session.execute(text("DELETE FROM assets WHERE id = :id"), {"id": str(aid)})
         for sid in [sprint_a, sprint_b]:
             await session.execute(text("DELETE FROM sprints WHERE id = :id"), {"id": str(sid)})
+        for bkid in [brand_kit_a, brand_kit_b]:
+            await session.execute(text("DELETE FROM brand_kits WHERE id = :id"), {"id": str(bkid)})
         for cid in [client_a, client_b]:
             await session.execute(text("DELETE FROM clients WHERE id = :id"), {"id": str(cid)})
         await session.commit()
