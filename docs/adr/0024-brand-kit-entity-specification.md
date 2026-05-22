@@ -15,50 +15,57 @@ For a performance creative agency, the brand kit is also the mechanism that prev
 
 The brand kit is a versioned entity with the following canonical structure:
 
-```typescript
-interface BrandKit {
-  id: string;
-  clientId: string;
-  version: string;              // e.g. "v1", "v2-summer-refresh"
-  name: string;
-  status: 'active' | 'archived';
+```python
+from typing import Literal
+from pydantic import BaseModel, Field
 
-  identity: {
-    brandName: string;
-    tagline?: string;
-    voice: string[];            // e.g. ["bold", "direct", "irreverent"]
-    tone: string[];             // e.g. ["confident", "warm", "urgent"]
-    targetAudience: string;
-    positioning: string;        // one-sentence brand positioning
-  };
 
-  visual: {
-    primaryColors: string[];    // hex values
-    secondaryColors: string[];
-    fonts: string[];
-    logoRef?: AssetReference;   // stored externally per ADR-0008
-    styleKeywords: string[];    // e.g. ["dark", "premium", "minimalist"]
-    visualReferences: AssetReference[];
-  };
+class BrandIdentity(BaseModel):
+    brand_name: str
+    tagline: str | None = None
+    voice: list[str] = Field(default_factory=list)
+    tone: list[str] = Field(default_factory=list)
+    target_audience: str
+    positioning: str
 
-  restrictions: {
-    forbiddenElements: string[];    // e.g. ["competitor logos", "red backgrounds"]
-    forbiddenPhrases: string[];
-    contentWarnings: string[];      // e.g. ["no children", "no alcohol"]
-    platformRules: Record<string, string[]>; // platform-specific constraints
-  };
 
-  performance: {
-    provenAngles: string[];         // angles that have worked historically
-    provenHooks: string[];          // hooks with confirmed performance
-    failedApproaches: string[];     // documented failures to avoid repeating
-    topAssetRefs: AssetReference[]; // references to best-performing past assets
-  };
+class BrandVisualSystem(BaseModel):
+    primary_colors: list[str] = Field(default_factory=list)  # hex values
+    secondary_colors: list[str] = Field(default_factory=list)
+    fonts: list[str] = Field(default_factory=list)
+    logo_ref: "AssetReference | None" = None
+    style_keywords: list[str] = Field(default_factory=list)
+    visual_references: list["AssetReference"] = Field(default_factory=list)
 
-  createdAt: string;
-  updatedAt: string;
-}
+
+class BrandRestrictions(BaseModel):
+    forbidden_elements: list[str] = Field(default_factory=list)
+    forbidden_phrases: list[str] = Field(default_factory=list)
+    content_warnings: list[str] = Field(default_factory=list)
+    platform_rules: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class BrandPerformanceMemory(BaseModel):
+    proven_angles: list[str] = Field(default_factory=list)
+    proven_hooks: list[str] = Field(default_factory=list)
+    failed_approaches: list[str] = Field(default_factory=list)
+    top_asset_refs: list["AssetReference"] = Field(default_factory=list)
+
+
+class BrandKit(BaseModel):
+    id: str
+    client_id: str
+    version: str
+    name: str
+    status: Literal["active", "archived"] = "active"
+    identity: BrandIdentity
+    visual: BrandVisualSystem
+    restrictions: BrandRestrictions
+    performance: BrandPerformanceMemory = Field(default_factory=BrandPerformanceMemory)
+    created_at: str
+    updated_at: str
 ```
+
 
 The `performance` block is seeded empty and populated over time as `PerformanceRecord` entries are linked to the brand kit (ADR-0025). This is the mechanism through which the system accumulates institutional creative knowledge.
 
@@ -81,9 +88,9 @@ The `performance` block creates a dependency on ADR-0025: the brand kit specific
 
 ## Impact on VOS Studio MCP
 
-- Create `src/schemas/brandKit.ts` with the full Zod schema derived from the interface above.
+- Create `src/vos_studio_mcp/schemas/brand_kit.py` with the full Pydantic schema derived from the model above.
 - The `save_brand_kit` tool must validate the full schema on creation and version on update.
-- All prompt generation tools must accept `brandKitId` and `brandKitVersion` and use the brand kit to constrain output.
+- All prompt generation tools must accept `brand_kit_id` and `brand_kit_version` and use the brand kit to constrain output.
 - Dashboard packs (Milestone 2) must include a section derived from `restrictions` as a checklist item.
 - QA tools must use `restrictions.forbiddenElements` and `restrictions.forbiddenPhrases` as automated rejection criteria.
 - The `performance` block must be updated by the performance feedback tool (ADR-0025) — it must not be editable directly via `save_brand_kit` to prevent manual data contamination.
