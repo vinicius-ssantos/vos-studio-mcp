@@ -309,7 +309,7 @@ Architectural decisions are documented in [`docs/adr`](docs/adr).
 
 Current ADRs:
 
-- ADR-0001 — Use Python as the primary language
+- ADR-0001 — Use TypeScript as the primary language
 - ADR-0002 — Build a remote HTTP MCP server
 - ADR-0003 — Separate dashboard_manual and api_credits modes
 - ADR-0004 — Do not automate provider dashboards
@@ -334,57 +334,41 @@ Future implementation work should read the ADRs before making architectural chan
 
 ## Expected project structure
 
-The project uses Python with the official MCP SDK (FastMCP) for tool definitions, FastAPI for HTTP middleware, and Pydantic v2 for schema validation. Package management is handled by `uv`.
-
-```
-Request → FastAPI middleware (auth, rate limiting)
-        → FastMCP ASGI app (MCP protocol, tool dispatch)
-        → tool handler (business logic)
-        → services (database, providers, storage)
-```
+The initial TypeScript structure should evolve toward:
 
 ```text
 src/
-  vos_studio_mcp/
-    server.py
-    tools/
-      create_client.py
-      save_brand_kit.py
-      create_creative_sprint.py
-      prepare_dashboard_pack.py
-      estimate_generation_cost.py
-      register_manual_asset.py
-      review_asset_quality.py
-      create_delivery_pack.py
-      record_performance.py
-    schemas/
-      client.py
-      brand_kit.py
-      sprint.py
-      asset.py
-      job.py
-      approval.py
-      performance.py
-    services/
-      database.py
-      storage.py
-      audit_log.py
-      cost_estimator.py
-      providers/
-        base.py
-        manual_dashboard.py
-        higgsfield.py
-        freepik.py
-        magnific.py
-    tasks/
-      generation.py
-    config/
-      env.py
-db/
-  models.py
-  migrations/
-pyproject.toml
-.env.example
+  server.ts
+  tools/
+    createClient.ts
+    saveBrandKit.ts
+    createCreativeSprint.ts
+    prepareDashboardPack.ts
+    estimateGenerationCost.ts
+    registerManualAsset.ts
+    reviewAssetQuality.ts
+    createDeliveryPack.ts
+  schemas/
+    client.ts
+    brandKit.ts
+    sprint.ts
+    asset.ts
+    job.ts
+    approval.ts
+  services/
+    database.ts
+    storage.ts
+    auditLog.ts
+    costEstimator.ts
+    providers/
+      manualDashboard.ts
+      higgsfield.ts
+      freepik.ts
+      magnific.ts
+  queues/
+    generationQueue.ts
+  config/
+    env.ts
 ```
 
 This structure may change, but changes should be documented through ADRs when they affect architecture.
@@ -416,16 +400,14 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 - ADR foundation
 - descriptive README
-- Python 3.12 project setup
-- FastMCP/FastAPI setup
-- `uv` project setup
-- local development commands
+- TypeScript project setup
+- MCP SDK setup
+- local development script
 - `.env.example`
 
 ### Milestone 1 — Minimal MCP server
 
 - remote-capable MCP server
-- authentication (OAuth 2.1 + bearer token for dev)
 - health/status tool
 - basic schema validation
 - structured tool output convention
@@ -433,19 +415,17 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 ### Milestone 2 — Creative sprint workflow
 
 - client creation
-- brand kit creation (full entity per ADR-0024)
-- creative sprint creation with budget pre-authorization
+- brand kit creation
+- creative sprint creation
 - dashboard pack generation
 - manual asset registration
 
-### Milestone 3 — Persistence, auditability, and performance learning
+### Milestone 3 — Persistence and auditability
 
-- Supabase/Postgres schema with RLS
+- Supabase/Postgres schema
 - audit logs
 - asset references
-- sprint budget tracking and alerts
-- performance records (`record_performance` tool)
-- sprint initialization with performance context
+- approval records
 
 ### Milestone 4 — Provider adapters
 
@@ -456,29 +436,12 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 ### Milestone 5 — Production readiness
 
+- authentication
 - deployment
 - rate limits
 - secret management
-- job queue (Celery + Redis)
-- Flower monitoring
+- job queue
 - monitoring
-
-### Milestone 6 — Platform integrations (future)
-
-- Meta Marketing API integration for performance data
-- Google Ads API integration
-- TikTok Business API integration
-- automated brand kit enrichment from performance data
-
----
-
-## Architecture decisions
-
-All architecture decisions are documented as ADRs in [`docs/adr/`](docs/adr/README.md).
-
-The current ADR set covers ADR-0001 through ADR-0030, including language choice, remote server model, generation modes, security boundaries, persistence, provider adapters, cost controls, sprint budget pre-authorization, audit logging, authentication, schema migrations, job queue technology, adapter interface contract, client data isolation, brand kit entity specification, testing, A/B testing, webhooks, prompt libraries, observability, and the performance feedback loop.
-
-When implementing new features or making structural changes, check the ADR index first. If a decision is not covered by an existing ADR, create one before implementing.
 
 ---
 
