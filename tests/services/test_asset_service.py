@@ -1,6 +1,9 @@
-"""Unit tests for asset_service schemas."""
+"""Unit tests for asset_service — schemas and service functions."""
 
 import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from vos_studio_mcp.schemas.asset import AssetInput, AssetResponse
 
@@ -43,3 +46,98 @@ def test_asset_response_shape():
     )
     assert resp.status == "registered"
     assert resp.next_action == "register_manual_asset"
+
+
+# ---------------------------------------------------------------------------
+# Service function tests — mocked AsyncSession
+# ---------------------------------------------------------------------------
+
+_GET_SESSION = "vos_studio_mcp.services.asset_service.get_session"
+
+
+def _asset_session_ctx(fixed_id: uuid.UUID | None = None, asset_list: list | None = None) -> MagicMock:
+    _id = fixed_id or uuid.uuid4()
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock(side_effect=lambda obj: setattr(obj, "id", _id))
+
+    mock_result = MagicMock()
+    mock_scalars = MagicMock()
+    mock_scalars.all = MagicMock(return_value=asset_list or [])
+    mock_result.scalars = MagicMock(return_value=mock_scalars)
+    session.execute = AsyncMock(return_value=mock_result)
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_register_manual_asset_success() -> None:
+    from vos_studio_mcp.services.asset_service import register_manual_asset
+
+    fixed_id = uuid.uuid4()
+    sprint_id = str(uuid.uuid4())
+    ctx = _asset_session_ctx(fixed_id=fixed_id)
+
+    data = AssetInput(
+        sprint_id=sprint_id,
+        provider="manual_dashboard",
+        prompt_version="v1",
+        preset_version="p1",
+        storage_url="https://cdn.example.com/asset.png",
+    )
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await register_manual_asset(data)
+
+    assert result.status == "registered"
+    assert result.asset_id == str(fixed_id)
+    assert result.sprint_id == sprint_id
+    assert result.next_action == "register_manual_asset"
+
+
+@pytest.mark.asyncio
+async def test_list_sprint_assets_empty() -> None:
+    from vos_studio_mcp.services.asset_service import list_sprint_assets
+
+    sprint_id = str(uuid.uuid4())
+    ctx = _asset_session_ctx(asset_list=[])
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await list_sprint_assets(sprint_id)
+
+    assert result.status == "ok"
+    assert result.total == 0
+    assert result.assets == []
+    assert result.sprint_id == sprint_id
+
+
+@pytest.mark.asyncio
+async def test_list_sprint_assets_returns_items() -> None:
+    from vos_studio_mcp.services.asset_service import list_sprint_assets
+
+    asset1 = MagicMock()
+    asset1.id = uuid.uuid4()
+    asset1.provider = "manual_dashboard"
+    asset1.prompt_version = "v1"
+    asset1.preset_version = "p1"
+    asset1.storage_url = "https://cdn.example.com/a1.png"
+    asset1.preview_url = None
+    asset1.width = 1920
+    asset1.height = 1080
+    asset1.format = "png"
+    asset1.created_at = None
+
+    ctx = _asset_session_ctx(asset_list=[asset1])
+    sprint_id = str(uuid.uuid4())
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await list_sprint_assets(sprint_id)
+
+    assert result.total == 1
+    assert result.assets[0].asset_id == str(asset1.id)
+    assert result.assets[0].provider == "manual_dashboard"
+    assert result.assets[0].width == 1920

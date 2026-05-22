@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Lint
+        run: uv run ruff check src/ tests/
+
+      - name: Typecheck
+        run: uv run mypy src/
+
+      # Run migrations as the postgres superuser so CREATE TABLE / ENABLE RLS /
+      # CREATE POLICY all succeed. The DATABASE_URL here points at the superuser.
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:password@localhost:5432/postgres
+        run: uv run alembic upgrade head
+
+      # Create a non-privileged app role that is subject to the RLS policies.
+      # Grants run AFTER migrations so the tables already exist.
+      - name: Create app role and grant privileges
+        env:
+          PGPASSWORD: password
+        run: |
+          psql -h localhost -U postgres postgres <<'SQL'
+          CREATE ROLE vos_app LOGIN PASSWORD 'vos_app_pass';
+          GRANT USAGE ON SCHEMA public TO vos_app;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO vos_app;
+          GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO vos_app;
+          SQL
+
+      # Run the full test suite.
+      #
+      # DATABASE_URL    → superuser; used by webhook integration test fixtures
+      #                   (which need SET LOCAL row_security = off to insert data)
+      # APP_DATABASE_URL → vos_app non-superuser; used by RLS isolation tests
+      #                   to verify that policies are actually enforced.
+      - name: Test
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:password@localhost:5432/postgres
+          APP_DATABASE_URL: postgresql+asyncpg://vos_app:vos_app_pass@localhost:5432/postgres
+          CELERY_BROKER_URL: redis://localhost:6379/0
+          CELERY_RESULT_BACKEND: redis://localhost:6379/1
+          DEV_BEARER_TOKEN: ci-test-token
+          DEV_CLIENT_ID: "00000000-0000-0000-0000-000000000001"
+          WEBHOOK_SECRET_HIGGSFIELD: test-secret
+          SENTRY_DSN: ""
+        run: uv run pytest --cov=src/vos_studio_mcp --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml

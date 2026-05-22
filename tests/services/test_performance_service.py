@@ -1,4 +1,7 @@
-"""Unit tests for performance schemas and error types."""
+"""Unit tests for performance schemas, error types, and service functions."""
+
+import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -97,3 +100,219 @@ def test_close_sprint_response_shape():
     )
     assert resp.sprint_status == "closed"
     assert resp.next_action == "record_asset_performance"
+
+
+# ---------------------------------------------------------------------------
+# Service function tests — mocked AsyncSession
+# ---------------------------------------------------------------------------
+
+_GET_SESSION = "vos_studio_mcp.services.performance_service.get_session"
+
+
+def _perf_session_ctx(
+    asset: object = None,
+    sprint: object = None,
+    brand_kit: object = None,
+) -> MagicMock:
+    from db.models import Asset as AssetModel
+    from db.models import BrandKit as BrandKitModel
+    from db.models import Sprint as SprintModel
+
+    def _get_side_effect(model_class: type, pk: object) -> object:
+        if model_class is AssetModel:
+            return asset
+        if model_class is SprintModel:
+            return sprint
+        if model_class is BrandKitModel:
+            return brand_kit
+        return None
+
+    session = AsyncMock()
+    session.get = AsyncMock(side_effect=_get_side_effect)
+    session.commit = AsyncMock()
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return ctx
+
+
+def _mock_asset(sprint_id: uuid.UUID) -> MagicMock:
+    a = MagicMock()
+    a.sprint_id = sprint_id
+    a.performance_score = None
+    a.performance_label = None
+    a.performance_notes = None
+    a.variant_id = None
+    return a
+
+
+def _mock_sprint(brand_kit_id: uuid.UUID | None = None) -> MagicMock:
+    s = MagicMock()
+    s.brand_kit_id = brand_kit_id or uuid.uuid4()
+    return s
+
+
+def _mock_brand_kit(memory: dict | None = None) -> MagicMock:
+    bk = MagicMock()
+    bk.performance_memory = dict(memory or {})
+    return bk
+
+
+@pytest.mark.asyncio
+async def test_record_asset_performance_neutral() -> None:
+    from vos_studio_mcp.services.performance_service import record_asset_performance
+
+    sprint_id = uuid.uuid4()
+    asset = _mock_asset(sprint_id=sprint_id)
+    sprint = _mock_sprint()
+    bk = _mock_brand_kit()
+
+    ctx = _perf_session_ctx(asset=asset, sprint=sprint, brand_kit=bk)
+    data = PerformanceInput(asset_id=str(uuid.uuid4()), sprint_id=str(sprint_id), score=3)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await record_asset_performance(data)
+
+    assert result.status == "recorded"
+    assert result.brand_kit_updated is True
+
+
+@pytest.mark.asyncio
+async def test_record_asset_performance_top_performer_updates_memory() -> None:
+    from vos_studio_mcp.services.performance_service import record_asset_performance
+
+    sprint_id = uuid.uuid4()
+    asset = _mock_asset(sprint_id=sprint_id)
+    sprint = _mock_sprint()
+    bk = _mock_brand_kit(memory={"proven_angles": [], "proven_hooks": []})
+
+    ctx = _perf_session_ctx(asset=asset, sprint=sprint, brand_kit=bk)
+    data = PerformanceInput(
+        asset_id=str(uuid.uuid4()),
+        sprint_id=str(sprint_id),
+        score=5,
+        label="top_performer",
+        angle_label="summer vibes",
+        hook_label="bold headline",
+    )
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await record_asset_performance(data)
+
+    assert result.brand_kit_updated is True
+    assert "summer vibes" in bk.performance_memory["proven_angles"]
+    assert "bold headline" in bk.performance_memory["proven_hooks"]
+
+
+@pytest.mark.asyncio
+async def test_record_asset_performance_failed_updates_failed_approaches() -> None:
+    from vos_studio_mcp.services.performance_service import record_asset_performance
+
+    sprint_id = uuid.uuid4()
+    asset = _mock_asset(sprint_id=sprint_id)
+    sprint = _mock_sprint()
+    bk = _mock_brand_kit()
+
+    ctx = _perf_session_ctx(asset=asset, sprint=sprint, brand_kit=bk)
+    data = PerformanceInput(
+        asset_id=str(uuid.uuid4()),
+        sprint_id=str(sprint_id),
+        score=1,
+        label="failed",
+        notes="Too generic",
+    )
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await record_asset_performance(data)
+
+    assert result.brand_kit_updated is True
+    assert "Too generic" in bk.performance_memory["failed_approaches"]
+
+
+@pytest.mark.asyncio
+async def test_record_asset_performance_asset_not_found() -> None:
+    from vos_studio_mcp.services.performance_service import record_asset_performance
+
+    ctx = _perf_session_ctx(asset=None)
+    data = PerformanceInput(asset_id=str(uuid.uuid4()), sprint_id=str(uuid.uuid4()), score=3)
+
+    with patch(_GET_SESSION, return_value=ctx), pytest.raises(VosError) as exc:
+        await record_asset_performance(data)
+
+    assert exc.value.error_code == ErrorCode.NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_record_asset_performance_wrong_sprint() -> None:
+    from vos_studio_mcp.services.performance_service import record_asset_performance
+
+    asset = _mock_asset(sprint_id=uuid.uuid4())  # different sprint
+    ctx = _perf_session_ctx(asset=asset)
+    data = PerformanceInput(asset_id=str(uuid.uuid4()), sprint_id=str(uuid.uuid4()), score=3)
+
+    with patch(_GET_SESSION, return_value=ctx), pytest.raises(VosError) as exc:
+        await record_asset_performance(data)
+
+    assert exc.value.error_code == ErrorCode.INVALID_INPUT
+
+
+@pytest.mark.asyncio
+async def test_record_asset_performance_sprint_not_found() -> None:
+    from vos_studio_mcp.services.performance_service import record_asset_performance
+
+    sprint_id = uuid.uuid4()
+    asset = _mock_asset(sprint_id=sprint_id)
+    ctx = _perf_session_ctx(asset=asset, sprint=None)
+    data = PerformanceInput(asset_id=str(uuid.uuid4()), sprint_id=str(sprint_id), score=3)
+
+    with patch(_GET_SESSION, return_value=ctx), pytest.raises(VosError) as exc:
+        await record_asset_performance(data)
+
+    assert exc.value.error_code == ErrorCode.NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_record_asset_performance_no_brand_kit() -> None:
+    from vos_studio_mcp.services.performance_service import record_asset_performance
+
+    sprint_id = uuid.uuid4()
+    asset = _mock_asset(sprint_id=sprint_id)
+    sprint = _mock_sprint()
+    ctx = _perf_session_ctx(asset=asset, sprint=sprint, brand_kit=None)
+    data = PerformanceInput(
+        asset_id=str(uuid.uuid4()),
+        sprint_id=str(sprint_id),
+        score=5,
+        label="top_performer",
+        angle_label="bold angle",
+    )
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await record_asset_performance(data)
+
+    assert result.brand_kit_updated is False
+
+
+@pytest.mark.asyncio
+async def test_record_asset_performance_top_performer_deduplicates_memory() -> None:
+    from vos_studio_mcp.services.performance_service import record_asset_performance
+
+    sprint_id = uuid.uuid4()
+    asset = _mock_asset(sprint_id=sprint_id)
+    sprint = _mock_sprint()
+    bk = _mock_brand_kit(memory={"proven_angles": ["summer vibes"]})
+
+    ctx = _perf_session_ctx(asset=asset, sprint=sprint, brand_kit=bk)
+    data = PerformanceInput(
+        asset_id=str(uuid.uuid4()),
+        sprint_id=str(sprint_id),
+        score=5,
+        label="top_performer",
+        angle_label="summer vibes",
+    )
+
+    with patch(_GET_SESSION, return_value=ctx):
+        await record_asset_performance(data)
+
+    assert bk.performance_memory["proven_angles"].count("summer vibes") == 1

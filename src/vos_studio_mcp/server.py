@@ -76,3 +76,6 @@ def _mount_mcp_app(fastapi_app: FastAPI, mcp_server: FastMCP) -> None:
 
 
 _mount_mcp_app(app, mcp)
+
+if __name__ == "__main__":
+    mcp.run()

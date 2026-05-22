@@ -65,6 +65,9 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=src/vos_studio_mcp --cov-report=term-missing"
+markers = [
+    "integration: requires a real PostgreSQL database and Redis (skipped without DATABASE_URL)",
+]
 
 [tool.coverage.run]
 source = ["src/vos_studio_mcp"]
