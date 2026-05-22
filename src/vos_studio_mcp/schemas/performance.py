@@ -13,6 +13,10 @@ class PerformanceInput(BaseModel):
     hook_label: str | None = None
     angle_label: str | None = None
     notes: str | None = None
+    variant_id: str | None = Field(
+        default=None,
+        description="Optional A/B variant this asset belongs to (ADR-0027).",
+    )
 
 
 class PerformanceResponse(BaseModel):

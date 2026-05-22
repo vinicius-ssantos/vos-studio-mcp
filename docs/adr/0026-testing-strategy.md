@@ -78,11 +78,22 @@ Every new tool added in Milestone 2+ must include Layer 1 and Layer 4 tests. Lay
 
 CI runs Layer 1 and Layer 4 on every commit. Layer 2 (integration) runs on every PR. Layer 3 (adapter contracts) runs on every PR when `src/vos_studio_mcp/services/providers/` is modified.
 
+## Implementation status
+
+| Layer | Component | Status |
+|-------|-----------|--------|
+| 1 — Unit | `tests/tools/`, `tests/services/`, `tests/tasks/` | ✅ Implemented |
+| 2 — Integration (DB + RLS) | `tests/integration/test_rls_isolation.py` | ✅ Implemented (skips without DB) |
+| 2 — Integration (webhook) | `tests/integration/test_webhook_db.py` | ✅ Implemented (skips without DB) |
+| 3 — Adapter contract | `tests/providers/test_adapter_contract.py` | ✅ Implemented |
+| 3 — Adapter (Higgsfield) | `tests/providers/test_higgsfield.py` | ✅ Implemented |
+| 3 — Adapter (ManualDashboard) | `tests/providers/test_manual_dashboard.py` | ✅ Implemented |
+| 4 — MCP protocol | `tests/tools/test_health.py` | ✅ Infrastructure ready |
+
 ## Impact on VOS Studio MCP
 
-- Add `pytest`, `pytest-asyncio`, `pytest-cov`, `respx` to dev dependencies in `pyproject.toml`.
-- Create `tests/` directory with `tests/tools/`, `tests/services/`, `tests/providers/`, `tests/integration/`.
-- Create `tests/fixtures/providers/` for JSON response payloads per provider.
-- Create `tests/conftest.py` with database session fixtures and test client setup.
-- Add `CELERY_TASK_ALWAYS_EAGER=True` and `DATABASE_URL` pointing to test DB in `pytest` configuration.
+- `pytest`, `pytest-asyncio`, `pytest-cov`, `respx` in dev dependencies.
+- `tests/` tree: `tools/`, `services/`, `providers/`, `tasks/`, `routes/`, `integration/`.
+- Integration tests guarded by `_require_db()` — auto-skip without `DATABASE_URL`.
+- Adapter contract tests run without provider credentials (all HTTP mocked with respx).
 - Never use real provider API keys in any test. CI must not have provider credentials.

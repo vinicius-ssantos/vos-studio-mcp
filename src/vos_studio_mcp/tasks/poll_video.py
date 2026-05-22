@@ -65,15 +65,24 @@ async def _check_and_update(asset_id: str) -> str:
             if job_status.media_url:
                 asset.storage_url = job_status.media_url
             await session.commit()
-            log.info("poll_video_job.completed", extra={"asset_id": asset_id})
+            log.info(
+                "generation.completed",
+                extra={"asset_id": asset_id, "job_id": asset.provider_job_id, "provider": "higgsfield"},
+            )
             if job_status.media_url:
                 upload_video_to_storage.delay(asset_id, job_status.media_url)
         else:
             asset.generation_status = "failed"
             await session.commit()
             log.error(
-                "poll_video_job.job_failed",
-                extra={"asset_id": asset_id, "error": job_status.error},
+                "generation.failed",
+                extra={
+                    "asset_id": asset_id,
+                    "job_id": asset.provider_job_id,
+                    "provider": "higgsfield",
+                    "error_code": "provider_error",
+                    "error": job_status.error,
+                },
             )
 
     return "done"

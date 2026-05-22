@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, MetaData, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from typing import Any
 
 convention = {
     "ix": "ix_%(column_0_label)s",
@@ -98,6 +99,7 @@ class Sprint(Base):
     client: Mapped["Client"] = relationship(back_populates="sprints")
     brand_kit: Mapped["BrandKit"] = relationship(back_populates="sprints")
     assets: Mapped[list["Asset"]] = relationship(back_populates="sprint")
+    variant_groups: Mapped[list["VariantGroup"]] = relationship(back_populates="sprint")
 
 
 class Asset(Base):
@@ -125,4 +127,89 @@ class Asset(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("variants.id", ondelete="SET NULL"), nullable=True
+    )
+
     sprint: Mapped["Sprint"] = relationship(back_populates="assets")
+    variant: Mapped["Variant | None"] = relationship(back_populates="assets")
+
+
+class VariantGroup(Base):
+    __tablename__ = "variant_groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sprint_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sprints.id", ondelete="CASCADE"), nullable=False
+    )
+    hypothesis: Mapped[str] = mapped_column(Text, nullable=False)
+    variable: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    winner_variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("variants.id", ondelete="SET NULL"), nullable=True
+    )
+    concluded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    sprint: Mapped["Sprint"] = relationship(back_populates="variant_groups")
+    variants: Mapped[list["Variant"]] = relationship(
+        back_populates="group",
+        foreign_keys="Variant.group_id",
+    )
+
+
+class Variant(Base):
+    __tablename__ = "variants"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("variant_groups.id", ondelete="CASCADE"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    preset_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    group: Mapped["VariantGroup"] = relationship(
+        back_populates="variants",
+        foreign_keys=[group_id],
+    )
+    assets: Mapped[list["Asset"]] = relationship(back_populates="variant")
+
+
+class PromptTemplate(Base):
+    __tablename__ = "prompt_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    industry: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    format: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    objective: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    platform: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    prompt_template: Mapped[str] = mapped_column(Text, nullable=False)
+    negative_prompt_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preset_recommendations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    avg_ctr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    avg_roas: Mapped[float | None] = mapped_column(Float, nullable=True)
+    usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    performance_tier: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="experimental"
+    )
+    derived_from_sprint_ids: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    contributed_by: Mapped[str] = mapped_column(String(254), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

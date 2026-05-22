@@ -78,11 +78,23 @@ Implementation must include logging middleware, shared logger utilities, and com
 
 Operationally, incident triage will rely on `trace_id` and `generation_attempt_id` as the primary lookup keys across logs, queue records, and error tracking events.
 
+## Implementation status
+
+| Component | Status |
+|-----------|--------|
+| `observability/logging.py` — JSON formatter + redaction | ✅ Implemented |
+| `observability/middleware.py` — `trace_id`/`request_id` injection | ✅ Implemented |
+| `observability/context.py` — `ContextVar` correlation store | ✅ Implemented |
+| `ErrorCode` enum with all ADR-0030 codes | ✅ Implemented |
+| `VosError` FastAPI exception handler (structured JSON, 400) | ✅ Implemented |
+| Sentry `FastApiIntegration` + `StarletteIntegration` | ✅ Implemented |
+| Sentry `CeleryIntegration` | ✅ Implemented |
+| Generation lifecycle events (`generation.requested`, `generation.queued`, `generation.provider_submitted`, `generation.completed`, `generation.failed`) | ✅ Implemented |
+| Celery task base class with correlation propagation | ⏳ Deferred — tasks use `asyncio.run` bridge; propagation via structlog context TBD |
+
 ## Impact on VOS Studio MCP
 
-- Add `src/vos_studio_mcp/observability/` module with logger setup, redaction rules, and correlation context helpers.
-- Add FastAPI middleware to inject `trace_id`/`request_id` into request context.
-- Add Celery task base class that propagates correlation metadata into worker logs.
-- Define project-wide error code enum and error mapping layer for tools/adapters.
-- Add local/dev configuration for readable logs and production configuration for JSON logs.
-- Add tests that assert critical events include mandatory fields and failure codes.
+- `src/vos_studio_mcp/observability/` — JSON logging, correlation middleware, context vars.
+- `src/vos_studio_mcp/errors.py` — `ErrorCode` StrEnum, `VosError` exception.
+- `server.py` — Sentry init with FastAPI + Celery integrations; `VosError` exception handler.
+- `generation_service.py` / `tasks/poll_video.py` — lifecycle log events with `job_id`, `provider`, `error_code` fields.

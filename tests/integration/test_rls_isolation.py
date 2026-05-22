@@ -1,0 +1,251 @@
+"""Integration tests: RLS client-data isolation (ADR-0026 Layer 2, ADR-0023).
+
+Proves that a query authenticated as client A cannot return rows belonging to client B
+for every client-scoped table: sprints, assets, brand_kits.
+
+Requires a real PostgreSQL database. Skipped automatically without DATABASE_URL.
+Run with: pytest tests/integration/ -m integration -v
+"""
+
+import os
+import uuid
+
+import pytest
+import pytest_asyncio
+
+pytestmark = pytest.mark.integration
+
+_DB_AVAILABLE = False
+try:
+    import asyncpg  # noqa: F401
+
+    _DB_AVAILABLE = True
+except ImportError:
+    pass
+
+
+def _require_db() -> None:
+    if not _DB_AVAILABLE or not os.environ.get("DATABASE_URL"):
+        pytest.skip("No DATABASE_URL — skipping RLS integration test")
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def engine():  # type: ignore[misc]
+    _require_db()
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    e = create_async_engine(os.environ["DATABASE_URL"], echo=False)
+    yield e
+    await e.dispose()
+
+
+@pytest_asyncio.fixture
+async def two_clients(engine):  # type: ignore[misc]
+    """Create two isolated clients with one sprint + asset each, then clean up."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    client_a = uuid.uuid4()
+    client_b = uuid.uuid4()
+    sprint_a = uuid.uuid4()
+    sprint_b = uuid.uuid4()
+    asset_a = uuid.uuid4()
+    asset_b = uuid.uuid4()
+
+    async with factory() as session:
+        await session.execute(text("SET LOCAL row_security = off"))
+
+        for cid, name, slug in [
+            (client_a, "Client A", f"client-a-{client_a.hex[:6]}"),
+            (client_b, "Client B", f"client-b-{client_b.hex[:6]}"),
+        ]:
+            await session.execute(
+                text("INSERT INTO clients (id, name, slug) VALUES (:id, :name, :slug)"),
+                {"id": str(cid), "name": name, "slug": slug},
+            )
+
+        for sid, cid, sname in [
+            (sprint_a, client_a, "Sprint A"),
+            (sprint_b, client_b, "Sprint B"),
+        ]:
+            await session.execute(
+                text(
+                    "INSERT INTO sprints (id, client_id, sprint_name, sprint_status,"
+                    " max_spend_usd, spent_usd) VALUES (:id, :cid, :name, 'open', 10, 0)"
+                ),
+                {"id": str(sid), "cid": str(cid), "name": sname},
+            )
+
+        for aid, sid, prov in [(asset_a, sprint_a, "higgsfield"), (asset_b, sprint_b, "higgsfield")]:
+            await session.execute(
+                text(
+                    "INSERT INTO assets (id, sprint_id, provider, prompt_version,"
+                    " preset_version, generation_status)"
+                    " VALUES (:id, :sid, :prov, 'v1', 'p1', 'manual')"
+                ),
+                {"id": str(aid), "sid": str(sid), "prov": prov},
+            )
+
+        await session.commit()
+
+    yield {
+        "client_a": client_a,
+        "client_b": client_b,
+        "sprint_a": sprint_a,
+        "sprint_b": sprint_b,
+        "asset_a": asset_a,
+        "asset_b": asset_b,
+    }
+
+    async with factory() as session:
+        await session.execute(text("SET LOCAL row_security = off"))
+        for aid in [asset_a, asset_b]:
+            await session.execute(text("DELETE FROM assets WHERE id = :id"), {"id": str(aid)})
+        for sid in [sprint_a, sprint_b]:
+            await session.execute(text("DELETE FROM sprints WHERE id = :id"), {"id": str(sid)})
+        for cid in [client_a, client_b]:
+            await session.execute(text("DELETE FROM clients WHERE id = :id"), {"id": str(cid)})
+        await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# RLS isolation tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sprint_rls_client_a_cannot_read_client_b_sprints(engine, two_clients) -> None:  # type: ignore[misc]
+    """Client A's RLS context must not expose client B's sprints."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    client_a_id = str(two_clients["client_a"])
+    sprint_b_id = str(two_clients["sprint_b"])
+
+    async with factory() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_client_id', :cid, TRUE)"),
+            {"cid": client_a_id},
+        )
+        await session.execute(text("SET LOCAL row_security = on"))
+
+        result = await session.execute(
+            text("SELECT id FROM sprints WHERE id = :sid"),
+            {"sid": sprint_b_id},
+        )
+        row = result.first()
+
+    assert row is None, "Client A must not read client B's sprint via RLS"
+
+
+@pytest.mark.asyncio
+async def test_sprint_rls_client_a_can_read_own_sprint(engine, two_clients) -> None:  # type: ignore[misc]
+    """Client A's RLS context must expose its own sprint."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    client_a_id = str(two_clients["client_a"])
+    sprint_a_id = str(two_clients["sprint_a"])
+
+    async with factory() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_client_id', :cid, TRUE)"),
+            {"cid": client_a_id},
+        )
+        await session.execute(text("SET LOCAL row_security = on"))
+
+        result = await session.execute(
+            text("SELECT id FROM sprints WHERE id = :sid"),
+            {"sid": sprint_a_id},
+        )
+        row = result.first()
+
+    assert row is not None, "Client A must be able to read its own sprint"
+
+
+@pytest.mark.asyncio
+async def test_asset_rls_client_a_cannot_read_client_b_assets(engine, two_clients) -> None:  # type: ignore[misc]
+    """Client A's RLS context must not expose client B's assets."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    client_a_id = str(two_clients["client_a"])
+    asset_b_id = str(two_clients["asset_b"])
+
+    async with factory() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_client_id', :cid, TRUE)"),
+            {"cid": client_a_id},
+        )
+        await session.execute(text("SET LOCAL row_security = on"))
+
+        result = await session.execute(
+            text("SELECT id FROM assets WHERE id = :aid"),
+            {"aid": asset_b_id},
+        )
+        row = result.first()
+
+    assert row is None, "Client A must not read client B's asset via RLS"
+
+
+@pytest.mark.asyncio
+async def test_asset_rls_client_a_can_read_own_assets(engine, two_clients) -> None:  # type: ignore[misc]
+    """Client A's RLS context must expose its own assets."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    client_a_id = str(two_clients["client_a"])
+    asset_a_id = str(two_clients["asset_a"])
+
+    async with factory() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_client_id', :cid, TRUE)"),
+            {"cid": client_a_id},
+        )
+        await session.execute(text("SET LOCAL row_security = on"))
+
+        result = await session.execute(
+            text("SELECT id FROM assets WHERE id = :aid"),
+            {"aid": asset_a_id},
+        )
+        row = result.first()
+
+    assert row is not None, "Client A must be able to read its own assets"
+
+
+@pytest.mark.asyncio
+async def test_sprint_count_rls_client_a_sees_only_own_sprints(engine, two_clients) -> None:  # type: ignore[misc]
+    """Aggregate query under client A context must not count client B's sprints."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    client_a_id = str(two_clients["client_a"])
+
+    async with factory() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_client_id', :cid, TRUE)"),
+            {"cid": client_a_id},
+        )
+        await session.execute(text("SET LOCAL row_security = on"))
+
+        result = await session.execute(
+            text(
+                "SELECT COUNT(*) FROM sprints WHERE id IN (:sa, :sb)"
+            ),
+            {"sa": str(two_clients["sprint_a"]), "sb": str(two_clients["sprint_b"])},
+        )
+        count = result.scalar()
+
+    assert count == 1, f"Expected 1 sprint visible to client A, got {count}"

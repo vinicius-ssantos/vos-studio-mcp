@@ -60,6 +60,26 @@ async def get_asset_with_client(
     return asset, client_id
 
 
+async def set_tenant_context_from_sprint(session: AsyncSession, sprint_id: str) -> str:
+    """Look up a sprint's client_id and set the RLS tenant context.
+
+    Bypasses RLS to retrieve the client_id, then re-enables RLS with that context.
+    Returns the client_id string. Raises LookupError if the sprint is not found.
+    """
+    await bypass_rls(session)
+    result = await session.execute(
+        text("SELECT client_id FROM sprints WHERE id = :sprint_id LIMIT 1"),
+        {"sprint_id": sprint_id},
+    )
+    row = result.first()
+    if row is None:
+        raise LookupError(f"Sprint {sprint_id} not found")
+    client_id = str(row[0])
+    await set_tenant_context(session, client_id)
+    await session.execute(text("SET LOCAL row_security = on"))
+    return client_id
+
+
 async def bypass_rls(session: AsyncSession) -> None:
     """Disable row-level security for the current transaction.
 

@@ -12,6 +12,19 @@ class SprintBudget(BaseModel):
     alert_threshold_pct: float = Field(default=0.8, ge=0.0, le=1.0)
 
 
+class VariantInput(BaseModel):
+    label: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(..., min_length=1)
+    prompt_version: str = Field(..., min_length=1, max_length=50)
+    preset_version: str = Field(..., min_length=1, max_length=50)
+
+
+class VariantGroupInput(BaseModel):
+    hypothesis: str = Field(..., min_length=1)
+    variable: str = Field(..., min_length=1, max_length=100)
+    variants: list[VariantInput] = Field(..., min_length=2)
+
+
 class SprintInput(BaseModel):
     client_id: str
     brand_kit_id: str
@@ -21,6 +34,26 @@ class SprintInput(BaseModel):
     brief: str = Field(..., min_length=1)
     budget: SprintBudget
     mode: Literal["dashboard_manual", "api_credits"] = "dashboard_manual"
+    variant_groups: list[VariantGroupInput] = Field(
+        default_factory=list,
+        description="Optional A/B test groups to create with the sprint (ADR-0027).",
+    )
+    industry: list[str] = Field(
+        default_factory=list,
+        description="Industry tags for prompt library suggestions (ADR-0029).",
+    )
+    format: list[str] = Field(
+        default_factory=list,
+        description="Format tags for prompt library suggestions (e.g. video_ad, static_image).",
+    )
+    objective: list[str] = Field(
+        default_factory=list,
+        description="Objective tags for prompt library suggestions (e.g. conversion, awareness).",
+    )
+    platform: list[str] = Field(
+        default_factory=list,
+        description="Platform tags for prompt library suggestions (e.g. meta, tiktok).",
+    )
 
 
 class BudgetStatus(BaseModel):
@@ -30,12 +63,22 @@ class BudgetStatus(BaseModel):
     alert: bool
 
 
+class LibrarySuggestion(BaseModel):
+    template_id: str
+    name: str
+    performance_tier: str
+    avg_ctr: float | None
+    prompt_preview: str
+
+
 class SprintResponse(BaseModel):
     status: str
     sprint_id: str
     summary: str
     budget_status: BudgetStatus
     next_action: str
+    variant_groups_created: int = 0
+    library_suggestions: list[LibrarySuggestion] = Field(default_factory=list)
 
 
 class SprintStatusResponse(BaseModel):
