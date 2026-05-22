@@ -136,7 +136,12 @@ class HiggsFieldAdapter:
         if mapped == "failed":
             error = str(data.get("error") or data.get("message") or "generation failed")
 
-        return JobStatus(job_id=job_id, status=mapped, error=error)
+        media_url: str | None = None
+        if mapped == "completed":
+            output: dict[str, Any] = data.get("output") or {}
+            media_url = output.get("media_url") or None
+
+        return JobStatus(job_id=job_id, status=mapped, error=error, media_url=media_url)
 
     async def prepare_manual_pack(self, params: GenerationParams) -> ManualPack:
         prompt = params.prompt or params.prompt_version

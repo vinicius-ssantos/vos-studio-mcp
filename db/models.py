@@ -110,7 +110,7 @@ class Asset(Base):
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(50), nullable=False)
     preset_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    storage_url: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     preview_url: Mapped[str | None] = mapped_column(Text)
     width: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[int | None] = mapped_column(Integer)
@@ -119,6 +119,8 @@ class Asset(Base):
     performance_score: Mapped[int | None] = mapped_column(Integer)
     performance_label: Mapped[str | None] = mapped_column(String(20))
     performance_notes: Mapped[str | None] = mapped_column(Text)
+    provider_job_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    generation_status: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

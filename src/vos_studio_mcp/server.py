@@ -12,6 +12,7 @@ from vos_studio_mcp.auth.middleware import auth_middleware
 from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.observability.logging import configure_logging
 from vos_studio_mcp.observability.middleware import correlation_middleware
+from vos_studio_mcp.routes.webhooks import router as webhooks_router
 from vos_studio_mcp.services.status import get_server_status
 from vos_studio_mcp.tools import register_tools
 
@@ -34,6 +35,8 @@ app = FastAPI(title=settings.mcp_server_name, debug=settings.debug)
 # Middleware executes in reverse registration order: correlation runs first, then auth.
 app.middleware("http")(auth_middleware)
 app.middleware("http")(correlation_middleware)
+# Webhook routes bypass auth middleware via _OPEN_PREFIXES in auth/middleware.py
+app.include_router(webhooks_router)
 
 
 @app.get("/health")

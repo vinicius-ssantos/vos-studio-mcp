@@ -13,11 +13,13 @@ from vos_studio_mcp.config.env import get_settings
 log = logging.getLogger(__name__)
 
 _OPEN_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+_OPEN_PREFIXES = ("/webhooks/",)
 
 
 async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """Validate bearer token and inject client_id into request context."""
-    if request.url.path in _OPEN_PATHS:
+    path = request.url.path
+    if path in _OPEN_PATHS or path.startswith(_OPEN_PREFIXES):
         return await call_next(request)
 
     settings = get_settings()
