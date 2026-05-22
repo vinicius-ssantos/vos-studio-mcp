@@ -1,6 +1,7 @@
 import pytest
-from src.vos_studio_mcp.services.providers.manual_dashboard import ManualDashboardAdapter
-from src.vos_studio_mcp.services.providers.base import GenerationParams
+
+from vos_studio_mcp.services.providers.base import GenerationParams
+from vos_studio_mcp.services.providers.manual_dashboard import ManualDashboardAdapter
 
 
 @pytest.fixture
@@ -19,31 +20,31 @@ def params() -> GenerationParams:
 
 
 @pytest.mark.asyncio
-async def test_estimate_cost_is_zero(adapter, params) -> None:
+async def test_estimate_cost_is_zero(adapter: ManualDashboardAdapter, params: GenerationParams) -> None:
     result = await adapter.estimate_cost(params)
     assert result.estimated_usd == 0.0
     assert result.uncertain is False
 
 
 @pytest.mark.asyncio
-async def test_generate_image_raises(adapter, params) -> None:
+async def test_generate_image_raises(adapter: ManualDashboardAdapter, params: GenerationParams) -> None:
     with pytest.raises(NotImplementedError):
         await adapter.generate_image(params)
 
 
 @pytest.mark.asyncio
-async def test_generate_video_raises(adapter, params) -> None:
+async def test_generate_video_raises(adapter: ManualDashboardAdapter, params: GenerationParams) -> None:
     with pytest.raises(NotImplementedError):
         await adapter.generate_video(params)
 
 
 @pytest.mark.asyncio
-async def test_prepare_manual_pack_returns_pack(adapter, params) -> None:
+async def test_prepare_manual_pack_returns_pack(adapter: ManualDashboardAdapter, params: GenerationParams) -> None:
     pack = await adapter.prepare_manual_pack(params)
     assert pack.provider == "manual_dashboard"
     assert len(pack.checklist) > 0
     assert len(pack.qa_criteria) > 0
 
 
-def test_verify_webhook_signature_always_true(adapter) -> None:
+def test_verify_webhook_signature_always_true(adapter: ManualDashboardAdapter) -> None:
     assert adapter.verify_webhook_signature(b"payload", {}) is True

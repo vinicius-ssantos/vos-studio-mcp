@@ -1,5 +1,5 @@
-from src.vos_studio_mcp.services.providers.base import ProviderAdapter
-from src.vos_studio_mcp.services.providers.manual_dashboard import ManualDashboardAdapter
+from vos_studio_mcp.services.providers.base import ProviderAdapter
+from vos_studio_mcp.services.providers.manual_dashboard import ManualDashboardAdapter
 
 _registry: dict[str, ProviderAdapter] = {
     "manual_dashboard": ManualDashboardAdapter(),

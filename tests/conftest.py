@@ -7,8 +7,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 def server_params() -> StdioServerParameters:
     """MCP server parameters for protocol-level tests (ADR-0026 Layer 4)."""
     return StdioServerParameters(
-        command="python",
-        args=["-m", "src.vos_studio_mcp.server"],
+        command="uv",
+        args=["run", "python", "-m", "vos_studio_mcp.server"],
     )
 
 
