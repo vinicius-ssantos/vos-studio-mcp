@@ -20,7 +20,7 @@ Every table that contains client-scoped data must have RLS enabled and a policy 
 The application sets the current client context at the start of each authenticated request by calling:
 
 ```sql
-SELECT set_config('app.current_client_id', $clientId, true);
+SELECT set_config('app.current_client_id', $client_id, true);
 ```
 
 RLS policies on client-scoped tables reference this configuration:
