@@ -327,6 +327,18 @@ Current ADRs:
 - ADR-0016 — Use environment variables and secret management for credentials
 - ADR-0017 — Start private-first and client-safe by design
 - ADR-0018 — Use incremental PR-based development with coding agents
+- ADR-0019 — Define authentication model for the remote MCP server
+- ADR-0020 — Database schema evolution and migration strategy
+- ADR-0021 — Job queue technology selection
+- ADR-0022 — Provider adapter interface contract
+- ADR-0023 — Multitenancy and client data isolation
+- ADR-0024 — Brand kit entity specification
+- ADR-0025 — Performance feedback loop and creative learning
+- ADR-0026 — Testing strategy
+- ADR-0027 — A/B testing within creative sprints
+- ADR-0028 — Provider webhook support
+- ADR-0029 — Cross-client prompt library
+- ADR-0030 — Observability and failure diagnostics
 
 Future implementation work should read the ADRs before making architectural changes.
 
@@ -461,7 +473,7 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 - secret management
 - job queue (Celery + Redis)
 - Flower monitoring
-- monitoring
+- application monitoring and diagnostics
 
 ### Milestone 6 — Platform integrations (future)
 

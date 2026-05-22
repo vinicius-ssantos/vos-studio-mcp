@@ -17,48 +17,54 @@ This feedback loop is what transforms the MCP from a production system into an i
 
 Introduce a `PerformanceRecord` entity that links creative assets to their measured results on distribution platforms.
 
-```typescript
-interface PerformanceRecord {
-  id: string;
-  assetId: string;
-  sprintId: string;
-  clientId: string;
-  brandKitId: string;
+```python
+from typing import Literal
+from pydantic import BaseModel, Field
 
-  distribution: {
-    platform: 'meta' | 'google' | 'tiktok' | 'youtube' | 'linkedin' | string;
-    adAccountId?: string;
-    campaignId?: string;
-    adSetId?: string;
-    adId?: string;
-    startDate: string;
-    endDate?: string;
-  };
 
-  metrics: {
-    impressions?: number;
-    clicks?: number;
-    ctr?: number;            // click-through rate as decimal
-    spend_usd?: number;
-    conversions?: number;
-    cpa_usd?: number;        // cost per acquisition
-    roas?: number;           // return on ad spend
-    thumbStopRate?: number;  // for video: % who stopped scrolling
-    hookRetentionRate?: number; // for video: % who watched past 3s
-    qualityScore?: string;   // platform-assigned quality signal
-  };
+class DistributionContext(BaseModel):
+    platform: str
+    ad_account_id: str | None = None
+    campaign_id: str | None = None
+    ad_set_id: str | None = None
+    ad_id: str | None = None
+    start_date: str
+    end_date: str | None = None
 
-  classification: {
-    performanceTier: 'top' | 'average' | 'underperformer' | 'untested';
-    winningElements: string[];   // e.g. ["urgency hook", "dark background", "close-up product"]
-    failureReasons?: string[];   // e.g. ["weak CTA", "audience mismatch"]
-    notes?: string;
-  };
 
-  recordedAt: string;
-  recordedBy: string;         // agent or human operator ID
-}
+class PerformanceMetrics(BaseModel):
+    impressions: int | None = None
+    clicks: int | None = None
+    ctr: float | None = None
+    spend_usd: float | None = None
+    conversions: int | None = None
+    cpa_usd: float | None = None
+    roas: float | None = None
+    thumb_stop_rate: float | None = None
+    hook_retention_rate: float | None = None
+    quality_score: str | None = None
+
+
+class PerformanceClassification(BaseModel):
+    performance_tier: Literal["top", "average", "underperformer", "untested"]
+    winning_elements: list[str] = Field(default_factory=list)
+    failure_reasons: list[str] = Field(default_factory=list)
+    notes: str | None = None
+
+
+class PerformanceRecord(BaseModel):
+    id: str
+    asset_id: str
+    sprint_id: str
+    client_id: str
+    brand_kit_id: str
+    distribution: DistributionContext
+    metrics: PerformanceMetrics
+    classification: PerformanceClassification
+    recorded_at: str
+    recorded_by: str
 ```
+
 
 Performance records are created via a dedicated tool `record_performance` and are **never** auto-generated from platform APIs in the initial implementation. The operator registers results manually or via a future integration tool. This keeps the system useful before platform API integrations exist.
 
@@ -100,10 +106,10 @@ Platform API integrations (Meta Marketing API, Google Ads API, TikTok Business A
 
 ## Impact on VOS Studio MCP
 
-- Create `src/schemas/performance.ts` with the full Zod schema.
-- Create `src/tools/recordPerformance.ts` as a new tool in Milestone 3.
-- Update `src/tools/createCreativeSprint.ts` to query performance records and return `performance_context` in the response.
-- Update `src/services/database.ts` to include a `getTopPerformers(clientId, brandKitId)` query helper.
-- Add `performance` to `src/schemas/brandKit.ts` as a derived read-only block populated from `PerformanceRecord`.
+- Create `src/vos_studio_mcp/schemas/performance.py` with the full Pydantic schema.
+- Create `src/vos_studio_mcp/tools/record_performance.py` as a new tool in Milestone 3.
+- Update `src/vos_studio_mcp/tools/create_creative_sprint.py` to query performance records and return `performance_context` in the response.
+- Update `src/vos_studio_mcp/services/database.py` to include a `get_top_performers(client_id, brand_kit_id)` query helper.
+- Add `performance` to `src/vos_studio_mcp/schemas/brand_kit.py` as a derived read-only block populated from `PerformanceRecord`.
 - Add `performanceRecord` RLS policy to Milestone 3 schema migrations.
 - The brand kit update from a `top` performance record must go through the existing approval model (ADR-0005) before being committed.
