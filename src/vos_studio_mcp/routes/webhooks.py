@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request, Response
 from sqlalchemy import text
 
 from db.models import Asset
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import bypass_rls, get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
 from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
@@ -100,6 +101,15 @@ async def higgsfield_webhook(request: Request) -> dict[str, bool]:
     log.info(
         "higgsfield_webhook.processed",
         extra={"job_id": job_id, "status": mapped_status},
+    )
+
+    audit_action = AuditAction.WEBHOOK_JOB_COMPLETED if mapped_status == "completed" else AuditAction.WEBHOOK_JOB_FAILED
+    await emit_audit_event(
+        action=audit_action,
+        entity_type="asset",
+        entity_id=str(asset_id),
+        provider="higgsfield",
+        result=AuditResult.SUCCESS if mapped_status == "completed" else AuditResult.FAILED,
     )
 
     if mapped_status == "completed" and media_url:

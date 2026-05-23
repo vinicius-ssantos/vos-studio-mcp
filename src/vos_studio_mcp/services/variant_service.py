@@ -14,6 +14,7 @@ from vos_studio_mcp.schemas.variant import (
     ConcludeVariantTestResponse,
     VariantSummary,
 )
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session, set_tenant_context_from_sprint
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,12 @@ async def conclude_variant_test(data: ConcludeVariantTestInput) -> ConcludeVaria
         await session.commit()
         await session.refresh(group)
 
+    await emit_audit_event(
+        action=AuditAction.VARIANT_TEST_CONCLUDED,
+        entity_type="variant_group",
+        entity_id=data.group_id,
+        result=AuditResult.SUCCESS,
+    )
     log.info(
         "variant_test.concluded",
         extra={

@@ -17,6 +17,7 @@ from vos_studio_mcp.schemas.sprint import (
     SprintResponse,
     SprintStatusResponse,
 )
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session, set_tenant_context
 from vos_studio_mcp.services.prompt_library_service import get_library_suggestions
 
@@ -78,6 +79,15 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
             "mode": sprint.mode,
             "variant_groups": len(data.variant_groups),
         },
+    )
+
+    await emit_audit_event(
+        action=AuditAction.SPRINT_CREATED,
+        entity_type="sprint",
+        entity_id=str(sprint.id),
+        actor=data.client_id,
+        mode=sprint.mode,
+        result=AuditResult.SUCCESS,
     )
 
     library_suggestions = await get_library_suggestions(
@@ -172,6 +182,12 @@ async def close_sprint(data: CloseSprintInput) -> CloseSprintResponse:
         await session.commit()
         product_name = sprint.product_name
 
+    await emit_audit_event(
+        action=AuditAction.SPRINT_CLOSED,
+        entity_type="sprint",
+        entity_id=data.sprint_id,
+        result=AuditResult.SUCCESS,
+    )
     log.info("sprint closed", extra={"sprint_id": data.sprint_id})
     return CloseSprintResponse(
         status="closed",
