@@ -1,6 +1,6 @@
 """Add performance_records table for ADR-0025 Phase 2 structured metrics.
 
-Revision ID: d7e8f9a0b1c2
+Revision ID: f9a0b1c2d3e4
 Revises: c6d7e8f9a0b1
 Create Date: 2026-05-23 00:00:00.000000
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
-revision: str = "d7e8f9a0b1c2"
+revision: str = "f9a0b1c2d3e4"
 down_revision: Union[str, None] = "c6d7e8f9a0b1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
