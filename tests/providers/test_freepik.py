@@ -270,3 +270,13 @@ def test_verify_webhook_lowercase_header(adapter: FreepikAdapter) -> None:
     headers = {"x-freepik-signature": _make_sig("fp-secret", payload)}
     with patch(_PATCH, return_value=_settings()):
         assert adapter.verify_webhook_signature(payload, headers) is True
+
+
+@pytest.mark.asyncio
+async def test_check_job_status_no_api_key_raises(adapter: FreepikAdapter) -> None:
+    """check_job_status should raise PROVIDER_ERROR when FREEPIK_API_KEY is unset."""
+    from vos_studio_mcp.config.env import Settings
+
+    with patch(_PATCH, return_value=Settings(FREEPIK_API_KEY="")), pytest.raises(VosError) as exc:
+        await adapter.check_job_status("task-fp-001")
+    assert exc.value.error_code == ErrorCode.PROVIDER_ERROR

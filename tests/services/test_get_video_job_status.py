@@ -22,11 +22,13 @@ def _make_session_ctx() -> MagicMock:
 
 def _make_asset(
     generation_status: str = "pending",
+    storage_status: str = "not_required",
     storage_url: str | None = None,
     provider_job_id: str | None = "gen-123",
 ) -> MagicMock:
     asset = MagicMock()
     asset.generation_status = generation_status
+    asset.storage_status = storage_status
     asset.storage_url = storage_url
     asset.provider_job_id = provider_job_id
     return asset
@@ -116,6 +118,7 @@ async def test_processing_status_returns_poll_next_action() -> None:
 async def test_completed_returns_storage_url_and_pack_next_action() -> None:
     asset = _make_asset(
         generation_status="completed",
+        storage_status="stored",
         storage_url="https://r2.example.com/videos/cli-001/asset-001.mp4",
     )
 
@@ -127,6 +130,7 @@ async def test_completed_returns_storage_url_and_pack_next_action() -> None:
         result = await get_video_job_status("asset-001")
 
     assert result.generation_status == "completed"
+    assert result.storage_status == "stored"
     assert result.storage_url == "https://r2.example.com/videos/cli-001/asset-001.mp4"
     assert result.next_action == "prepare_dashboard_pack"
 

@@ -63,7 +63,8 @@ async def _check_and_update(asset_id: str) -> str:
         if job_status.status == "completed":
             asset.generation_status = "completed"
             if job_status.media_url:
-                asset.storage_url = job_status.media_url
+                # Mark upload as pending; the task will write storage_url + 'stored'
+                asset.storage_status = "pending"
             await session.commit()
             log.info(
                 "generation.completed",

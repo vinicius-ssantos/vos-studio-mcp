@@ -51,9 +51,15 @@ async def test_get_client_id_returns_client_id() -> None:
 
 @pytest.mark.asyncio
 async def test_update_storage_url_sets_fields() -> None:
+    """_update_storage_url must set storage_url and storage_status='stored' (ADR-0031).
+
+    generation_status must NOT be touched — that field belongs to the provider
+    lifecycle, not the upload lifecycle.
+    """
     asset = MagicMock()
     asset.storage_url = None
-    asset.generation_status = "completed"
+    asset.storage_status = "pending"
+    asset.generation_status = "completed"  # already set by webhook/poll — must stay
     session = AsyncMock()
     session.commit = AsyncMock()
 
@@ -69,14 +75,21 @@ async def test_update_storage_url_sets_fields() -> None:
         await _update_storage_url("asset-001", "https://r2.example.com/video.mp4")
 
     assert asset.storage_url == "https://r2.example.com/video.mp4"
-    assert asset.generation_status == "completed"
+    assert asset.storage_status == "stored"
+    assert asset.generation_status == "completed"  # unchanged
     session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_mark_upload_failed_sets_status() -> None:
+async def test_mark_upload_failed_sets_storage_status() -> None:
+    """_mark_upload_failed must set storage_status='failed' (ADR-0031).
+
+    generation_status must NOT be touched — generation succeeded; only the
+    upload step failed.
+    """
     asset = MagicMock()
-    asset.generation_status = "completed"
+    asset.storage_status = "pending"
+    asset.generation_status = "completed"  # must stay unchanged
     session = AsyncMock()
     session.commit = AsyncMock()
 
@@ -91,7 +104,8 @@ async def test_mark_upload_failed_sets_status() -> None:
         from vos_studio_mcp.tasks.upload_video import _mark_upload_failed
         await _mark_upload_failed("asset-001")
 
-    assert asset.generation_status == "failed"
+    assert asset.storage_status == "failed"
+    assert asset.generation_status == "completed"  # unchanged
 
 
 # ---------------------------------------------------------------------------
@@ -152,3 +166,105 @@ def _make_session_ctx(session: AsyncMock | None = None) -> MagicMock:
 
 # type: ignore helper for respx_mock fixture
 from typing import Any  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# upload_video_to_storage Celery task — main body (sync, bind=True)
+# ---------------------------------------------------------------------------
+
+
+def test_upload_video_to_storage_success() -> None:
+    from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
+
+    with (
+        patch(
+            "vos_studio_mcp.tasks.upload_video._get_client_id",
+            new=AsyncMock(return_value="cli-001"),
+        ),
+        patch(
+            "vos_studio_mcp.tasks.upload_video._update_storage_url",
+            new=AsyncMock(),
+        ) as mock_update,
+        patch("vos_studio_mcp.tasks.upload_video.storage") as mock_storage,
+    ):
+        mock_storage.download_video.return_value = b"video-data"
+        mock_storage.upload_video.return_value = "https://r2.example.com/video.mp4"
+
+        upload_video_to_storage.run("asset-001", "https://cdn.higgsfield.ai/v.mp4")
+
+    mock_storage.download_video.assert_called_once_with("https://cdn.higgsfield.ai/v.mp4")
+    mock_storage.upload_video.assert_called_once_with(b"video-data", "asset-001", "cli-001")
+    mock_update.assert_awaited_once_with("asset-001", "https://r2.example.com/video.mp4")
+
+
+def test_upload_video_to_storage_skips_when_no_client_id() -> None:
+    from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
+
+    with (
+        patch(
+            "vos_studio_mcp.tasks.upload_video._get_client_id",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("vos_studio_mcp.tasks.upload_video.storage") as mock_storage,
+    ):
+        upload_video_to_storage.run("asset-missing", "https://cdn.higgsfield.ai/v.mp4")
+
+    mock_storage.download_video.assert_not_called()
+
+
+def test_upload_video_to_storage_marks_failed_after_max_retries() -> None:
+    """When max retries are exhausted the asset must be marked failed."""
+    from celery.exceptions import MaxRetriesExceededError
+
+    from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
+
+    mock_mark = AsyncMock()
+
+    with (
+        patch(
+            "vos_studio_mcp.tasks.upload_video._get_client_id",
+            new=AsyncMock(return_value="cli-001"),
+        ),
+        patch(
+            "vos_studio_mcp.tasks.upload_video._mark_upload_failed",
+            new=mock_mark,
+        ),
+        patch("vos_studio_mcp.tasks.upload_video.storage") as mock_storage,
+        patch.object(upload_video_to_storage, "retry", side_effect=MaxRetriesExceededError()),
+    ):
+        mock_storage.download_video.side_effect = OSError("CDN unreachable")
+        upload_video_to_storage.run("asset-001", "https://cdn.higgsfield.ai/v.mp4")
+
+    mock_mark.assert_awaited_once_with("asset-001")
+
+
+def test_upload_video_to_storage_retries_on_transient_error() -> None:
+    """On the first few failures the task should reschedule itself (Retry raised).
+
+    Retry is a subclass of Exception so it gets caught by the inner
+    except-clause; _mark_upload_failed runs but must also be patched so no
+    real DB connection is attempted.
+    """
+    from celery.exceptions import Retry
+
+    from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
+
+    mock_mark = AsyncMock()
+
+    with (
+        patch(
+            "vos_studio_mcp.tasks.upload_video._get_client_id",
+            new=AsyncMock(return_value="cli-001"),
+        ),
+        patch(
+            "vos_studio_mcp.tasks.upload_video._mark_upload_failed",
+            new=mock_mark,
+        ),
+        patch("vos_studio_mcp.tasks.upload_video.storage") as mock_storage,
+        patch.object(upload_video_to_storage, "retry", side_effect=Retry()),
+    ):
+        mock_storage.download_video.side_effect = OSError("transient")
+        upload_video_to_storage.run("asset-001", "https://cdn.higgsfield.ai/v.mp4")
+
+    # task completed without raising; _mark_upload_failed was invoked because
+    # Retry (a subclass of Exception) was caught by the inner except block
+    mock_mark.assert_awaited_once_with("asset-001")

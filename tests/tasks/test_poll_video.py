@@ -16,10 +16,12 @@ _UPLOAD_TASK = "vos_studio_mcp.tasks.upload_video.upload_video_to_storage"
 def _mock_asset(
     job_id: str = "gen-123",
     status: str = "pending",
+    storage_status: str = "not_required",
 ) -> MagicMock:
     asset = MagicMock()
     asset.provider_job_id = job_id
     asset.generation_status = status
+    asset.storage_status = storage_status
     asset.storage_url = None
     return asset
 
@@ -101,7 +103,8 @@ async def test_check_completes_and_dispatches_upload() -> None:
 
     assert result == "done"
     assert asset.generation_status == "completed"
-    assert asset.storage_url == "https://cdn.higgsfield.ai/video.mp4"
+    assert asset.storage_status == "pending"  # upload enqueued (ADR-0031)
+    assert asset.storage_url is None  # upload task sets this, not poll task
     upload_task.delay.assert_called_once_with("asset-001", "https://cdn.higgsfield.ai/video.mp4")
 
 
@@ -193,3 +196,103 @@ async def test_check_completes_without_media_url_skips_upload() -> None:
 
     assert result == "done"
     upload_task.delay.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# poll_video_job.run() — main task body (sync, bind=True)
+# ---------------------------------------------------------------------------
+
+
+def test_poll_video_job_marks_failed_when_max_retries_exceeded() -> None:
+    """When retries are exhausted the asset must be marked failed."""
+    from celery.exceptions import MaxRetriesExceededError
+
+    from vos_studio_mcp.tasks.poll_video import poll_video_job
+
+    mock_mark = AsyncMock()
+
+    with (
+        patch(
+            f"{_TASK_MODULE}._check_and_update",
+            new=AsyncMock(return_value="retry"),
+        ),
+        patch(
+            f"{_TASK_MODULE}._mark_status",
+            new=mock_mark,
+        ),
+        patch.object(poll_video_job, "retry", side_effect=MaxRetriesExceededError()),
+    ):
+        poll_video_job.run("asset-001")
+
+    mock_mark.assert_awaited_once_with("asset-001", "failed")
+
+
+def test_poll_video_job_raises_retry_on_transient_outcome() -> None:
+    """On the first few retries Celery's Retry exception propagates normally."""
+    from celery.exceptions import Retry
+
+    from vos_studio_mcp.tasks.poll_video import poll_video_job
+
+    with (
+        patch(
+            f"{_TASK_MODULE}._check_and_update",
+            new=AsyncMock(return_value="retry"),
+        ),
+        patch.object(poll_video_job, "retry", side_effect=Retry()),
+        pytest.raises(Retry),
+    ):
+        poll_video_job.run("asset-001")
+
+
+def test_poll_video_job_done_outcome_returns_normally() -> None:
+    """When _check_and_update returns 'done' the task exits cleanly."""
+    from vos_studio_mcp.tasks.poll_video import poll_video_job
+
+    with patch(
+        f"{_TASK_MODULE}._check_and_update",
+        new=AsyncMock(return_value="done"),
+    ):
+        poll_video_job.run("asset-001")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# _mark_status helper (async, tested directly)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mark_status_sets_generation_status() -> None:
+    asset = _mock_asset(status="pending")
+    session = AsyncMock()
+    session.commit = AsyncMock()
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_GET_SESSION, return_value=ctx),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+    ):
+        from vos_studio_mcp.tasks.poll_video import _mark_status
+        await _mark_status("asset-001", "failed")
+
+    assert asset.generation_status == "failed"
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_mark_status_skips_commit_when_asset_not_found() -> None:
+    session = AsyncMock()
+    session.commit = AsyncMock()
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_GET_SESSION, return_value=ctx),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(None, None)),
+    ):
+        from vos_studio_mcp.tasks.poll_video import _mark_status
+        await _mark_status("missing-asset", "failed")
+
+    session.commit.assert_not_awaited()

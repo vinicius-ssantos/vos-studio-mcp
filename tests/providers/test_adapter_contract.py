@@ -272,3 +272,15 @@ def test_verify_webhook_never_raises_on_bad_headers_magnific() -> None:
     with patch(_MAGNIFIC_SETTINGS_PATCH, return_value=_magnific_settings()):
         result = MagnificAdapter().verify_webhook_signature(b"payload", {"X-Bad": "garbage"})
     assert result is False
+
+
+# ---------------------------------------------------------------------------
+# get_adapter registry
+# ---------------------------------------------------------------------------
+
+
+def test_get_adapter_raises_for_unknown_provider() -> None:
+    from vos_studio_mcp.services.providers import get_adapter
+
+    with pytest.raises(ValueError, match="Unknown provider"):
+        get_adapter("nonexistent_provider")

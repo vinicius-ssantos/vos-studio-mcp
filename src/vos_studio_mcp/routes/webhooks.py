@@ -91,7 +91,9 @@ async def higgsfield_webhook(request: Request) -> dict[str, bool]:
 
         asset.generation_status = mapped_status
         if mapped_status == "completed" and media_url:
-            asset.storage_url = media_url
+            # Upload is being enqueued below; mark it as pending so operators
+            # can see the pipeline is active (ADR-0031).
+            asset.storage_status = "pending"
 
         await session.commit()
 

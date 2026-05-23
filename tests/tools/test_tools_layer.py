@@ -446,6 +446,7 @@ async def test_get_video_job_status_delegates_to_service() -> None:
         status="ok",
         asset_id=asset_id,
         generation_status="completed",
+        storage_status="stored",
         storage_url="https://cdn.example.com/v.mp4",
         provider_job_id="gen-123",
         summary="Completed.",
