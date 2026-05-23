@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from vos_studio_mcp.schemas.performance_record import PerformanceContext
+
 
 class SprintBudget(BaseModel):
     max_spend_usd: float = Field(..., gt=0)
@@ -79,6 +81,7 @@ class SprintResponse(BaseModel):
     next_action: str
     variant_groups_created: int = 0
     library_suggestions: list[LibrarySuggestion] = Field(default_factory=list)
+    performance_context: PerformanceContext | None = None
 
 
 class SprintStatusResponse(BaseModel):

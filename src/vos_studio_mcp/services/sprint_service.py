@@ -5,9 +5,10 @@ import uuid
 
 from sqlalchemy import func, select
 
-from db.models import Asset, Sprint, Variant, VariantGroup
+from db.models import Asset, BrandKit, Sprint, Variant, VariantGroup
 from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
+from vos_studio_mcp.schemas.performance_record import PerformanceContext
 from vos_studio_mcp.schemas.sprint import (
     BudgetStatus,
     CloseSprintInput,
@@ -19,9 +20,18 @@ from vos_studio_mcp.schemas.sprint import (
 )
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session, set_tenant_context
+from vos_studio_mcp.services.performance_record_service import get_top_performers
 from vos_studio_mcp.services.prompt_library_service import get_library_suggestions
 
 log = logging.getLogger(__name__)
+
+
+def _str_list(memory: dict[str, object], key: str) -> list[str]:
+    """Extract a string list from a performance_memory dict key."""
+    value = memory.get(key)
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    return []
 
 
 async def create_creative_sprint(data: SprintInput) -> SprintResponse:
@@ -97,6 +107,27 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
         platform=data.platform,
     )
 
+    top_performers = await get_top_performers(data.client_id, data.brand_kit_id)
+
+    # Enrich performance_context from brand_kit qualitative memory + quantitative records
+    performance_context: PerformanceContext | None = None
+    async with get_session() as session:
+        await set_tenant_context(session, data.client_id)
+        brand_kit = await session.get(BrandKit, uuid.UUID(data.brand_kit_id))
+
+    if brand_kit is not None:
+        mem: dict[str, object] = dict(brand_kit.performance_memory)
+        top_angles: list[str] = _str_list(mem, "proven_angles")
+        proven_hooks: list[str] = _str_list(mem, "proven_hooks")
+        avoid_approaches: list[str] = _str_list(mem, "failed_approaches")
+        if top_angles or proven_hooks or avoid_approaches or top_performers:
+            performance_context = PerformanceContext(
+                top_angles=top_angles,
+                proven_hooks=proven_hooks,
+                avoid_approaches=avoid_approaches,
+                top_performers=top_performers,
+            )
+
     alert = sprint.spent_usd >= sprint.max_spend_usd * sprint.alert_threshold_pct
     return SprintResponse(
         status="created",
@@ -123,6 +154,7 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
             )
             for s in library_suggestions
         ],
+        performance_context=performance_context,
     )
 
 

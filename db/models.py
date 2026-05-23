@@ -235,3 +235,45 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+class PerformanceRecord(Base):
+    """Structured campaign performance record with distribution context and quantitative metrics (ADR-0025 Phase 2)."""
+
+    __tablename__ = "performance_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sprint_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sprints.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    brand_kit_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("brand_kits.id", ondelete="SET NULL"), nullable=True
+    )
+    # Distribution context
+    platform: Mapped[str] = mapped_column(String(50), nullable=False)
+    ad_account_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    campaign_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    ad_set_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    start_date: Mapped[str] = mapped_column(String(20), nullable=False)  # ISO 8601 date
+    end_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Quantitative metrics
+    impressions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    clicks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ctr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    spend_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    conversions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    roas: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thumb_stop_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hook_retention_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Outcome
+    performance_label: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
