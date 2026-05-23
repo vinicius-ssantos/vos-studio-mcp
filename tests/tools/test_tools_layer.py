@@ -64,6 +64,7 @@ _EXPECTED_TOOLS = {
     "conclude_variant_test",
     "promote_to_library",
     "prepare_video_blueprint",
+    "record_performance_metrics",
 }
 
 
@@ -712,3 +713,50 @@ async def test_prepare_video_blueprint_delegates_to_service() -> None:
     assert result.status == "ready"
     assert result.sprint_id == sid
     assert result.next_action == "prepare_dashboard_pack"
+
+
+# ---------------------------------------------------------------------------
+# record_performance_metrics.py
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_record_performance_metrics_delegates_to_service() -> None:
+    from vos_studio_mcp.schemas.performance_record import (
+        DistributionContext,
+        PerformanceMetrics,
+        PerformanceRecordInput,
+        PerformanceRecordResponse,
+    )
+    from vos_studio_mcp.tools.record_performance_metrics import (
+        register_record_performance_metrics_tools,
+    )
+
+    mock_mcp, captured = _make_mock_mcp()
+    register_record_performance_metrics_tools(mock_mcp)  # type: ignore[arg-type]
+
+    data = PerformanceRecordInput(
+        asset_id=str(uuid.uuid4()),
+        distribution=DistributionContext(platform="meta", start_date="2026-05-01"),
+        metrics=PerformanceMetrics(impressions=50_000, ctr=0.025, roas=3.2),
+        performance_label="top_performer",
+    )
+    record_id = str(uuid.uuid4())
+    mock_resp = PerformanceRecordResponse(
+        status="recorded",
+        record_id=record_id,
+        asset_id=data.asset_id,
+        performance_label="top_performer",
+        summary="Performance record created.",
+        next_action="create_creative_sprint",
+    )
+
+    with patch(
+        "vos_studio_mcp.tools.record_performance_metrics._create_performance_record",
+        new=AsyncMock(return_value=mock_resp),
+    ):
+        result = await captured["record_performance_metrics"](data=data)
+
+    assert result.status == "recorded"
+    assert result.record_id == record_id
+    assert result.next_action == "create_creative_sprint"

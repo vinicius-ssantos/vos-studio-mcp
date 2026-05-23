@@ -76,6 +76,7 @@ _GUARD = "vos_studio_mcp.services.sprint_service.assert_owns_client"
 _GET_SESSION = "vos_studio_mcp.services.sprint_service.get_session"
 _SET_TENANT = "vos_studio_mcp.services.sprint_service.set_tenant_context"
 _GET_LIBRARY = "vos_studio_mcp.services.sprint_service.get_library_suggestions"
+_GET_TOP_PERFORMERS = "vos_studio_mcp.services.sprint_service.get_top_performers"
 
 
 def _mock_sprint_orm(**kwargs: object) -> MagicMock:
@@ -88,6 +89,16 @@ def _mock_sprint_orm(**kwargs: object) -> MagicMock:
     s.spent_usd = kwargs.get("spent_usd", 0.0)
     s.alert_threshold_pct = kwargs.get("alert_threshold_pct", 0.8)
     return s
+
+
+def _brand_kit_ctx(brand_kit: object = None) -> MagicMock:
+    """Return a minimal async context manager mock for the brand_kit lookup session."""
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=brand_kit)
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return ctx
 
 
 def _sprint_ctx(sprint: object = None, asset_count: int = 0, new_id: uuid.UUID | None = None) -> MagicMock:
@@ -114,13 +125,15 @@ async def test_create_creative_sprint_success() -> None:
 
     fixed_id = uuid.uuid4()
     data = _make_sprint_input(client_id="00000000-0000-0000-0000-000000000001")
-    ctx = _sprint_ctx(new_id=fixed_id)
+    sprint_ctx = _sprint_ctx(new_id=fixed_id)
+    bk_ctx = _brand_kit_ctx(brand_kit=None)  # no brand_kit → performance_context is None
 
     with (
         patch(_GUARD),
-        patch(_GET_SESSION, return_value=ctx),
+        patch(_GET_SESSION, side_effect=[sprint_ctx, bk_ctx]),
         patch(_SET_TENANT, new_callable=AsyncMock),
         patch(_GET_LIBRARY, new_callable=AsyncMock, return_value=[]),
+        patch(_GET_TOP_PERFORMERS, new_callable=AsyncMock, return_value=[]),
     ):
         result = await create_creative_sprint(data)
 
@@ -129,6 +142,7 @@ async def test_create_creative_sprint_success() -> None:
     assert result.budget_status.approved_usd == 500.0
     assert result.next_action == "prepare_dashboard_pack"
     assert result.variant_groups_created == 0
+    assert result.performance_context is None
 
 
 @pytest.mark.asyncio
@@ -149,18 +163,65 @@ async def test_create_creative_sprint_with_variant_groups() -> None:
             )
         ],
     )
-    ctx = _sprint_ctx()
+    sprint_ctx = _sprint_ctx()
+    bk_ctx = _brand_kit_ctx(brand_kit=None)
 
     with (
         patch(_GUARD),
-        patch(_GET_SESSION, return_value=ctx),
+        patch(_GET_SESSION, side_effect=[sprint_ctx, bk_ctx]),
         patch(_SET_TENANT, new_callable=AsyncMock),
         patch(_GET_LIBRARY, new_callable=AsyncMock, return_value=[]),
+        patch(_GET_TOP_PERFORMERS, new_callable=AsyncMock, return_value=[]),
     ):
         result = await create_creative_sprint(data)
 
     assert result.status == "created"
     assert result.variant_groups_created == 1
+
+
+@pytest.mark.asyncio
+async def test_create_creative_sprint_with_performance_context() -> None:
+    """When brand_kit has performance memory, performance_context is populated."""
+    from vos_studio_mcp.schemas.performance_record import TopPerformer
+    from vos_studio_mcp.services.sprint_service import create_creative_sprint
+
+    data = _make_sprint_input(client_id="00000000-0000-0000-0000-000000000001")
+    sprint_ctx = _sprint_ctx()
+
+    brand_kit_mock = MagicMock()
+    brand_kit_mock.performance_memory = {
+        "proven_angles": ["summer vibes", "bold CTA"],
+        "proven_hooks": ["question hook"],
+        "failed_approaches": ["low contrast"],
+    }
+    bk_ctx = _brand_kit_ctx(brand_kit=brand_kit_mock)
+
+    fake_performer = TopPerformer(
+        asset_id=str(uuid.uuid4()),
+        platform="meta",
+        performance_label="top_performer",
+        ctr=0.04,
+        roas=3.5,
+        impressions=80_000,
+        recorded_at="2026-05-01T00:00:00",
+    )
+
+    with (
+        patch(_GUARD),
+        patch(_GET_SESSION, side_effect=[sprint_ctx, bk_ctx]),
+        patch(_SET_TENANT, new_callable=AsyncMock),
+        patch(_GET_LIBRARY, new_callable=AsyncMock, return_value=[]),
+        patch(_GET_TOP_PERFORMERS, new_callable=AsyncMock, return_value=[fake_performer]),
+    ):
+        result = await create_creative_sprint(data)
+
+    assert result.performance_context is not None
+    assert "summer vibes" in result.performance_context.top_angles
+    assert "bold CTA" in result.performance_context.top_angles
+    assert "question hook" in result.performance_context.proven_hooks
+    assert "low contrast" in result.performance_context.avoid_approaches
+    assert len(result.performance_context.top_performers) == 1
+    assert result.performance_context.top_performers[0].platform == "meta"
 
 
 @pytest.mark.asyncio
