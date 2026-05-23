@@ -316,3 +316,30 @@ async def test_record_asset_performance_top_performer_deduplicates_memory() -> N
         await record_asset_performance(data)
 
     assert bk.performance_memory["proven_angles"].count("summer vibes") == 1
+
+
+@pytest.mark.asyncio
+async def test_record_asset_performance_sets_variant_id() -> None:
+    """Passing variant_id in input should set asset.variant_id (line 39)."""
+    import uuid
+
+    sprint_id = uuid.uuid4()
+    variant_id = str(uuid.uuid4())
+    asset = _mock_asset(sprint_id=sprint_id)
+    sprint = _mock_sprint()
+    bk = _mock_brand_kit()
+
+    ctx = _perf_session_ctx(asset=asset, sprint=sprint, brand_kit=bk)
+    data = PerformanceInput(
+        asset_id=str(uuid.uuid4()),
+        sprint_id=str(sprint_id),
+        score=3,
+        variant_id=variant_id,
+    )
+
+    with patch(_GET_SESSION, return_value=ctx):
+        from vos_studio_mcp.services.performance_service import record_asset_performance
+        result = await record_asset_performance(data)
+
+    assert result.status == "recorded"
+    assert asset.variant_id == uuid.UUID(variant_id)

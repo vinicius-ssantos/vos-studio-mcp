@@ -282,3 +282,17 @@ def test_verify_webhook_no_secret_rejects(adapter: MagnificAdapter) -> None:
 def test_verify_webhook_missing_header_rejects(adapter: MagnificAdapter) -> None:
     with patch(_PATCH, return_value=_settings()):
         assert adapter.verify_webhook_signature(b"data", {}) is False
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_image_500_raises_provider_error(
+    adapter: MagnificAdapter, params: GenerationParams
+) -> None:
+    """Generic non-2xx, non-402/401 response should raise PROVIDER_ERROR."""
+    respx.post("https://api.magnific.ai/v1/upscaling").mock(
+        return_value=Response(500, json={"error": "internal server error"})
+    )
+    with patch(_PATCH, return_value=_settings()), pytest.raises(VosError) as exc:
+        await adapter.generate_image(params)
+    assert exc.value.error_code == ErrorCode.PROVIDER_ERROR

@@ -285,3 +285,38 @@ def test_auth_middleware_skips_webhook_path() -> None:
 
     # No Authorization header needed — auth middleware skips /webhooks/
     assert resp.status_code == 200
+
+
+def test_invalid_json_body_returns_200() -> None:
+    """Body that fails JSON parsing should be tolerated (lines 47-49)."""
+    body = b"not-valid-json{"
+    with patch(_SETTINGS_PATCH, return_value=_settings()), TestClient(_app()) as c:
+        resp = c.post(
+            "/webhooks/higgsfield",
+            content=body,
+            headers={"X-Higgsfield-Signature": _sig("wh-secret", body)},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"received": True}
+
+
+def test_asset_none_after_db_lookup_returns_200() -> None:
+    """When Asset row is gone by the time we fetch it, respond gracefully (line 90)."""
+    body = _payload()
+
+    session_ctx = _mock_session(found=True)
+    # Override: row found but asset fetch returns None
+    session_ctx.__aenter__.return_value.get = AsyncMock(return_value=None)
+
+    with (
+        patch(_SETTINGS_PATCH, return_value=_settings()),
+        patch(_SESSION_PATCH, return_value=session_ctx),
+        TestClient(_app()) as c,
+    ):
+        resp = c.post(
+            "/webhooks/higgsfield",
+            content=body,
+            headers={"X-Higgsfield-Signature": _sig("wh-secret", body)},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"received": True}

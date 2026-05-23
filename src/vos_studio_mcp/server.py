@@ -48,7 +48,7 @@ app.include_router(webhooks_router)
 @app.exception_handler(VosError)
 async def vos_error_handler(_request: Request, exc: VosError) -> JSONResponse:
     """Translate domain errors into compact structured JSON (ADR-0011, ADR-0030)."""
-    log.warning("vos_error", extra={"error_code": exc.error_code, "message": exc.message})
+    log.warning("vos_error", extra={"error_code": exc.error_code, "error_message": exc.message})
     return JSONResponse(
         status_code=400,
         content={"error_code": exc.error_code, "message": exc.message},
