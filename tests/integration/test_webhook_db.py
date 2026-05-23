@@ -195,13 +195,16 @@ async def test_webhook_completed_updates_generation_status(test_asset, db_sessio
 
     await db_session.execute(text("SET LOCAL row_security = off"))
     result = await db_session.execute(
-        text("SELECT generation_status, storage_url FROM assets WHERE id = :id"),
+        text("SELECT generation_status, storage_status, storage_url FROM assets WHERE id = :id"),
         {"id": str(test_asset["asset_id"])},
     )
     row = result.first()
     assert row is not None
     assert row[0] == "completed"
-    assert row[1] == "https://cdn.higgsfield.ai/integ.mp4"
+    # ADR-0031: webhook sets storage_status=pending and enqueues upload task;
+    # storage_url stays NULL until the upload task writes it.
+    assert row[1] == "pending"
+    assert row[2] is None
 
 
 @pytest.mark.asyncio
