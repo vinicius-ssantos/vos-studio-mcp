@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from vos_studio_mcp.services import storage
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_asset_with_client, get_session
 from vos_studio_mcp.tasks.celery_app import celery_app
 
@@ -29,6 +30,13 @@ def upload_video_to_storage(self: Any, asset_id: str, media_url: str) -> None:
         data = storage.download_video(media_url)
         public_url = storage.upload_video(data, asset_id, client_id)
         asyncio.run(_update_storage_url(asset_id, public_url))
+        asyncio.run(emit_audit_event(
+            action=AuditAction.UPLOAD_COMPLETED,
+            entity_type="asset",
+            entity_id=asset_id,
+            actor=client_id,
+            result=AuditResult.SUCCESS,
+        ))
         log.info("upload_video_to_storage.done", extra={"asset_id": asset_id})
 
     except Exception as exc:
@@ -40,6 +48,13 @@ def upload_video_to_storage(self: Any, asset_id: str, media_url: str) -> None:
             raise self.retry(exc=exc)
         except Exception:
             asyncio.run(_mark_upload_failed(asset_id))
+            asyncio.run(emit_audit_event(
+                action=AuditAction.UPLOAD_FAILED,
+                entity_type="asset",
+                entity_id=asset_id,
+                result=AuditResult.FAILED,
+                failure_reason=str(exc),
+            ))
 
 
 async def _get_client_id(asset_id: str) -> str | None:

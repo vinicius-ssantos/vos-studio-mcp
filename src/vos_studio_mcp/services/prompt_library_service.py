@@ -13,6 +13,7 @@ from vos_studio_mcp.schemas.prompt_template import (
     PromoteToLibraryResponse,
     PromptTemplateSuggestion,
 )
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session
 
 log = logging.getLogger(__name__)
@@ -79,6 +80,12 @@ async def promote_to_library(
         await session.commit()
         await session.refresh(template)
 
+    await emit_audit_event(
+        action=AuditAction.PROMPT_PROMOTED,
+        entity_type="prompt_template",
+        entity_id=str(template.id),
+        result=AuditResult.SUCCESS,
+    )
     log.info(
         "prompt_library.promoted",
         extra={

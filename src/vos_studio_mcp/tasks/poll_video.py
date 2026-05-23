@@ -6,6 +6,7 @@ from typing import Any
 
 from celery.exceptions import MaxRetriesExceededError
 
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_asset_with_client, get_session
 from vos_studio_mcp.services.providers import get_adapter
 from vos_studio_mcp.tasks.celery_app import celery_app
@@ -72,9 +73,24 @@ async def _check_and_update(asset_id: str) -> str:
             )
             if job_status.media_url:
                 upload_video_to_storage.delay(asset_id, job_status.media_url)
+            await emit_audit_event(
+                action=AuditAction.POLL_JOB_COMPLETED,
+                entity_type="asset",
+                entity_id=asset_id,
+                provider="higgsfield",
+                result=AuditResult.SUCCESS,
+            )
         else:
             asset.generation_status = "failed"
             await session.commit()
+            await emit_audit_event(
+                action=AuditAction.POLL_JOB_FAILED,
+                entity_type="asset",
+                entity_id=asset_id,
+                provider="higgsfield",
+                result=AuditResult.FAILED,
+                failure_reason=job_status.error,
+            )
             log.error(
                 "generation.failed",
                 extra={

@@ -6,6 +6,7 @@ import uuid
 from db.models import Asset, BrandKit, Sprint
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.performance import PerformanceInput, PerformanceResponse
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session
 
 log = logging.getLogger(__name__)
@@ -71,6 +72,12 @@ async def record_asset_performance(data: PerformanceInput) -> PerformanceRespons
 
         await session.commit()
 
+    await emit_audit_event(
+        action=AuditAction.PERFORMANCE_RECORDED,
+        entity_type="asset",
+        entity_id=data.asset_id,
+        result=AuditResult.SUCCESS,
+    )
     log.info(
         "performance recorded",
         extra={

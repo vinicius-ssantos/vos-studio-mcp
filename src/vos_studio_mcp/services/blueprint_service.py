@@ -14,6 +14,7 @@ from vos_studio_mcp.schemas.blueprint import (
     VideoBlueprintInput,
     VideoBlueprintResponse,
 )
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session, set_tenant_context
 
 log = logging.getLogger(__name__)
@@ -137,6 +138,13 @@ async def prepare_video_blueprint(data: VideoBlueprintInput) -> VideoBlueprintRe
     risk_notes = _build_risk_notes(sprint, brand_kit)
     approval_required = sprint.spent_usd >= sprint.max_spend_usd * sprint.alert_threshold_pct
 
+    await emit_audit_event(
+        action=AuditAction.BLUEPRINT_PREPARED,
+        entity_type="sprint",
+        entity_id=data.sprint_id,
+        mode=sprint.mode,
+        result=AuditResult.SUCCESS,
+    )
     log.info(
         "video blueprint prepared",
         extra={

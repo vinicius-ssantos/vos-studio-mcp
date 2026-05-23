@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from db.models import Asset
 from vos_studio_mcp.schemas.asset import AssetInput, AssetListItem, AssetListResponse, AssetResponse
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session
 
 log = logging.getLogger(__name__)
@@ -30,6 +31,14 @@ async def register_manual_asset(data: AssetInput) -> AssetResponse:
         await session.commit()
         await session.refresh(asset)
 
+    await emit_audit_event(
+        action=AuditAction.MANUAL_ASSET_REGISTERED,
+        entity_type="asset",
+        entity_id=str(asset.id),
+        provider=data.provider,
+        mode="dashboard_manual",
+        result=AuditResult.SUCCESS,
+    )
     log.info(
         "asset registered",
         extra={"asset_id": str(asset.id), "sprint_id": data.sprint_id},

@@ -214,3 +214,24 @@ class PromptTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class AuditLog(Base):
+    """Persistent audit trail for paid, external, delivery, approval, and asset-changing actions (ADR-0015)."""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor: Mapped[str] = mapped_column(String(200), nullable=False)  # client_id or "system"
+    action: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    mode: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    cost_estimate_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    approval_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    result: Mapped[str] = mapped_column(String(20), nullable=False)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

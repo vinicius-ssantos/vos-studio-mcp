@@ -9,6 +9,7 @@ from db.models import Asset, Sprint
 from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.api_video import ApiVideoInput, ApiVideoResponse, VideoJobStatusResponse
+from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_asset_with_client, get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
 from vos_studio_mcp.services.providers.base import BudgetLimit, GenerationParams
@@ -102,6 +103,18 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
         await session.refresh(asset)
 
     poll_video_job.delay(str(asset.id))
+
+    await emit_audit_event(
+        action=AuditAction.API_VIDEO_REQUESTED,
+        entity_type="asset",
+        entity_id=str(asset.id),
+        actor=data.client_id,
+        provider="higgsfield",
+        mode="api_credits",
+        cost_estimate_usd=estimate.estimated_usd,
+        approval_status="approved",
+        result=AuditResult.SUCCESS,
+    )
 
     log.info(
         "generation.queued",
