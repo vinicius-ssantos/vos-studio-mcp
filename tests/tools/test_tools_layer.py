@@ -63,6 +63,7 @@ _EXPECTED_TOOLS = {
     "get_video_job_status",
     "conclude_variant_test",
     "promote_to_library",
+    "prepare_video_blueprint",
 }
 
 
@@ -667,3 +668,47 @@ async def test_prepare_dashboard_pack_closed_sprint_returns_blocked() -> None:
     assert result.status == "blocked"
     assert result.sprint_id == sid
     assert result.next_action == "sprint_is_closed"
+
+
+# ---------------------------------------------------------------------------
+# prepare_video_blueprint.py
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_prepare_video_blueprint_delegates_to_service() -> None:
+    from vos_studio_mcp.schemas.blueprint import VideoBlueprintInput, VideoBlueprintResponse
+    from vos_studio_mcp.tools.prepare_video_blueprint import (
+        register_prepare_video_blueprint_tools,
+    )
+
+    mock_mcp, captured = _make_mock_mcp()
+    register_prepare_video_blueprint_tools(mock_mcp)  # type: ignore[arg-type]
+
+    sid = _sprint_id()
+    data = VideoBlueprintInput(sprint_id=sid, shot_count=2, provider_targets=["higgsfield"])
+    mock_resp = VideoBlueprintResponse(
+        status="ready",
+        sprint_id=sid,
+        creative_intent="Bold video for Gen-Z",
+        campaign_objective="Drive trial",
+        shot_plan=[],
+        negative_prompts=["blurry frames"],
+        provider_packs=[],
+        manual_checklist=["Review brief"],
+        cost_notes="$100 remaining",
+        risk_notes="No blocking risks.",
+        approval_required=False,
+        summary="Blueprint ready: 2 shots, 1 provider.",
+        next_action="prepare_dashboard_pack",
+    )
+
+    with patch(
+        "vos_studio_mcp.tools.prepare_video_blueprint._prepare_video_blueprint",
+        new=AsyncMock(return_value=mock_resp),
+    ):
+        result = await captured["prepare_video_blueprint"](data=data)
+
+    assert result.status == "ready"
+    assert result.sprint_id == sid
+    assert result.next_action == "prepare_dashboard_pack"
