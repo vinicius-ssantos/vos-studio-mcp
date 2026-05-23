@@ -33,9 +33,20 @@ def upgrade() -> None:
         "UPDATE assets SET storage_status = 'stored' WHERE storage_url IS NOT NULL"
     )
 
-    # Grant SELECT/UPDATE on the new column so RLS policies and the
-    # application role can read and write it.
-    op.execute("GRANT SELECT, UPDATE (storage_status) ON assets TO vos_app")
+    # Grant SELECT/UPDATE on the new column to the app role — conditional so
+    # the migration succeeds in fresh CI environments where vos_app is created
+    # after migrations run. In production the role exists and the grant applies.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'vos_app') THEN
+                GRANT SELECT, UPDATE (storage_status) ON assets TO vos_app;
+            END IF;
+        END
+        $$
+        """
+    )
 
 
 def downgrade() -> None:
