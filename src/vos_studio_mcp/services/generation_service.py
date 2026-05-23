@@ -93,6 +93,7 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
             storage_url=None,
             provider_job_id=result.job_id,
             generation_status="pending",
+            storage_status="not_required",
         )
         session.add(asset)
 
@@ -159,6 +160,7 @@ async def get_video_job_status(asset_id: str) -> VideoJobStatusResponse:
         status="ok",
         asset_id=asset_id,
         generation_status=gen_status,
+        storage_status=asset.storage_status,
         storage_url=asset.storage_url,
         provider_job_id=asset.provider_job_id,
         summary=_SUMMARY.get(gen_status, f"Unknown status: {gen_status}"),

@@ -32,6 +32,7 @@ class VideoJobStatusResponse(BaseModel):
     status: str
     asset_id: str
     generation_status: str
+    storage_status: str
     storage_url: str | None
     provider_job_id: str | None
     summary: str

@@ -123,6 +123,7 @@ class Asset(Base):
     performance_notes: Mapped[str | None] = mapped_column(Text)
     provider_job_id: Mapped[str | None] = mapped_column(String(120), index=True)
     generation_status: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    storage_status: Mapped[str] = mapped_column(String(20), nullable=False, default="not_required")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

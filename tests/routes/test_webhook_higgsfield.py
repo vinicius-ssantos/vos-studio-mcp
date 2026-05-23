@@ -45,6 +45,7 @@ def _payload(**kwargs: Any) -> bytes:
 def _mock_session(found: bool = True, client_id: str = "00000000-0000-0000-0000-000000000001") -> MagicMock:
     asset = MagicMock()
     asset.generation_status = "pending"
+    asset.storage_status = "not_required"
     asset.storage_url = None
 
     row = MagicMock()
@@ -92,7 +93,12 @@ def test_missing_signature_returns_403() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_completed_updates_asset_status_and_storage_url() -> None:
+def test_completed_updates_generation_and_storage_status() -> None:
+    """Webhook sets generation_status='completed' and storage_status='pending'.
+
+    The CDN URL must NOT be written to storage_url — that belongs to the
+    upload task (ADR-0031).
+    """
     body = _payload(status="COMPLETED")
     session_ctx = _mock_session()
     asset = session_ctx.__aenter__.return_value.get.return_value
@@ -112,7 +118,8 @@ def test_completed_updates_asset_status_and_storage_url() -> None:
     assert resp.status_code == 200
     assert resp.json() == {"received": True}
     assert asset.generation_status == "completed"
-    assert asset.storage_url == "https://cdn.higgsfield.ai/video.mp4"
+    assert asset.storage_status == "pending"  # upload task will handle R2
+    assert asset.storage_url is None  # not set by webhook
 
 
 # ---------------------------------------------------------------------------

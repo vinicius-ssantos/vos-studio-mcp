@@ -51,9 +51,15 @@ async def test_get_client_id_returns_client_id() -> None:
 
 @pytest.mark.asyncio
 async def test_update_storage_url_sets_fields() -> None:
+    """_update_storage_url must set storage_url and storage_status='stored' (ADR-0031).
+
+    generation_status must NOT be touched — that field belongs to the provider
+    lifecycle, not the upload lifecycle.
+    """
     asset = MagicMock()
     asset.storage_url = None
-    asset.generation_status = "completed"
+    asset.storage_status = "pending"
+    asset.generation_status = "completed"  # already set by webhook/poll — must stay
     session = AsyncMock()
     session.commit = AsyncMock()
 
@@ -69,14 +75,21 @@ async def test_update_storage_url_sets_fields() -> None:
         await _update_storage_url("asset-001", "https://r2.example.com/video.mp4")
 
     assert asset.storage_url == "https://r2.example.com/video.mp4"
-    assert asset.generation_status == "completed"
+    assert asset.storage_status == "stored"
+    assert asset.generation_status == "completed"  # unchanged
     session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_mark_upload_failed_sets_status() -> None:
+async def test_mark_upload_failed_sets_storage_status() -> None:
+    """_mark_upload_failed must set storage_status='failed' (ADR-0031).
+
+    generation_status must NOT be touched — generation succeeded; only the
+    upload step failed.
+    """
     asset = MagicMock()
-    asset.generation_status = "completed"
+    asset.storage_status = "pending"
+    asset.generation_status = "completed"  # must stay unchanged
     session = AsyncMock()
     session.commit = AsyncMock()
 
@@ -91,7 +104,8 @@ async def test_mark_upload_failed_sets_status() -> None:
         from vos_studio_mcp.tasks.upload_video import _mark_upload_failed
         await _mark_upload_failed("asset-001")
 
-    assert asset.generation_status == "failed"
+    assert asset.storage_status == "failed"
+    assert asset.generation_status == "completed"  # unchanged
 
 
 # ---------------------------------------------------------------------------

@@ -15,9 +15,10 @@ log = logging.getLogger(__name__)
 def upload_video_to_storage(self: Any, asset_id: str, media_url: str) -> None:
     """Download the generated video from the provider CDN and upload to R2.
 
-    On success: updates asset.storage_url with the permanent R2 URL.
-    On unrecoverable failure: marks asset.generation_status = 'failed'
-    and does not retry (avoids infinite loops on permanent errors).
+    On success: updates asset.storage_url and asset.storage_status = 'stored'.
+    On unrecoverable failure: marks asset.storage_status = 'failed' — the
+    generation_status is deliberately left unchanged because the provider job
+    did succeed; only the upload step failed (ADR-0031).
     """
     try:
         client_id = asyncio.run(_get_client_id(asset_id))
@@ -52,7 +53,7 @@ async def _update_storage_url(asset_id: str, public_url: str) -> None:
         asset, _ = await get_asset_with_client(session, asset_id)
         if asset is not None:
             asset.storage_url = public_url
-            asset.generation_status = "completed"
+            asset.storage_status = "stored"
             await session.commit()
 
 
@@ -60,5 +61,5 @@ async def _mark_upload_failed(asset_id: str) -> None:
     async with get_session() as session:
         asset, _ = await get_asset_with_client(session, asset_id)
         if asset is not None:
-            asset.generation_status = "failed"
+            asset.storage_status = "failed"
             await session.commit()

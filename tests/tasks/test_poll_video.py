@@ -16,10 +16,12 @@ _UPLOAD_TASK = "vos_studio_mcp.tasks.upload_video.upload_video_to_storage"
 def _mock_asset(
     job_id: str = "gen-123",
     status: str = "pending",
+    storage_status: str = "not_required",
 ) -> MagicMock:
     asset = MagicMock()
     asset.provider_job_id = job_id
     asset.generation_status = status
+    asset.storage_status = storage_status
     asset.storage_url = None
     return asset
 
@@ -101,7 +103,8 @@ async def test_check_completes_and_dispatches_upload() -> None:
 
     assert result == "done"
     assert asset.generation_status == "completed"
-    assert asset.storage_url == "https://cdn.higgsfield.ai/video.mp4"
+    assert asset.storage_status == "pending"  # upload enqueued (ADR-0031)
+    assert asset.storage_url is None  # upload task sets this, not poll task
     upload_task.delay.assert_called_once_with("asset-001", "https://cdn.higgsfield.ai/video.mp4")
 
 
