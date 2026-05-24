@@ -1,11 +1,16 @@
-"""FastAPI middleware for correlation IDs."""
+"""FastAPI middleware for correlation IDs and Prometheus instrumentation."""
 
+import time
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from fastapi import Request, Response
 
 from vos_studio_mcp.observability.context import request_id_var, trace_id_var
+
+# Paths to skip when recording HTTP metrics (avoids cardinality explosion
+# for the metrics scrape endpoint itself and avoids noise from health pings).
+_SKIP_METRICS_PATHS = frozenset({"/metrics", "/health"})
 
 
 async def correlation_middleware(
@@ -27,3 +32,25 @@ async def correlation_middleware(
     finally:
         trace_id_var.reset(trace_token)
         request_id_var.reset(request_token)
+
+
+async def metrics_instrumentation_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Record per-request HTTP metrics into Prometheus counters/histograms."""
+    from vos_studio_mcp.observability.metrics import HTTP_REQUEST_DURATION, HTTP_REQUESTS
+
+    path = request.url.path
+    method = request.method
+
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration = time.perf_counter() - start
+
+    if path not in _SKIP_METRICS_PATHS:
+        labels = {"method": method, "path": path}
+        HTTP_REQUESTS.labels(**labels, status_code=str(response.status_code)).inc()
+        HTTP_REQUEST_DURATION.labels(**labels).observe(duration)
+
+    return response

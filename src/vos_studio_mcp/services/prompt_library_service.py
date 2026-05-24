@@ -90,7 +90,7 @@ async def promote_to_library(
         "prompt_library.promoted",
         extra={
             "template_id": str(template.id),
-            "name": template.name,
+            "template_name": template.name,
             "sprint_id": data.sprint_id,
             "contributed_by": operator_email,
         },
