@@ -2,11 +2,11 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, MetaData, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from typing import Any
 
 convention = {
     "ix": "ix_%(column_0_label)s",
