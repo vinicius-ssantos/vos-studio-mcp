@@ -17,7 +17,7 @@ from vos_studio_mcp.errors import VosError
 from vos_studio_mcp.observability.logging import configure_logging
 from vos_studio_mcp.observability.middleware import correlation_middleware
 from vos_studio_mcp.routes.webhooks import router as webhooks_router
-from vos_studio_mcp.services.status import get_server_status
+from vos_studio_mcp.services.status import get_health
 from vos_studio_mcp.tools import register_tools
 
 log = logging.getLogger(__name__)
@@ -56,14 +56,16 @@ async def vos_error_handler(_request: Request, exc: VosError) -> JSONResponse:
 
 
 @app.get("/health")
-async def health() -> dict[str, str | None]:
-    """Return a minimal HTTP health check payload."""
-    status = get_server_status(settings)
-    return {
-        "status": status.status,
-        "service": status.service,
-        "version": status.version,
-    }
+async def health() -> dict[str, object]:
+    """Return a detailed health check with per-component status.
+
+    Overall status:
+    - "ok"       — all components healthy
+    - "degraded" — celery worker unreachable (web still serves)
+    - "down"     — database or Redis unavailable
+    """
+    result = await get_health()
+    return result.model_dump()
 
 
 def _mount_mcp_app(fastapi_app: FastAPI, mcp_server: FastMCP) -> None:
