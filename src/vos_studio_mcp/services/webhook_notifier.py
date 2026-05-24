@@ -88,17 +88,23 @@ async def notify_job_completed(
     Silently swallows all network errors — the caller should not fail because
     of a third-party endpoint being unreachable.
     """
-    await _deliver(
-        event="asset.completed",
-        webhook_url=webhook_url,
-        asset_id=asset_id,
-        sprint_id=sprint_id,
-        client_id=client_id,
-        generation_status="completed",
-        storage_status=storage_status,
-        storage_url=storage_url,
-        provider_job_id=provider_job_id,
-    )
+    try:
+        await _deliver(
+            event="asset.completed",
+            webhook_url=webhook_url,
+            asset_id=asset_id,
+            sprint_id=sprint_id,
+            client_id=client_id,
+            generation_status="completed",
+            storage_status=storage_status,
+            storage_url=storage_url,
+            provider_job_id=provider_job_id,
+        )
+    except Exception as exc:
+        log.warning(
+            "outbound_webhook.delivery_failed",
+            extra={"asset_id": asset_id, "event": "asset.completed", "error": str(exc)},
+        )
 
 
 async def notify_job_failed(
@@ -110,17 +116,23 @@ async def notify_job_failed(
     event: str = "asset.failed",
 ) -> None:
     """POST an asset.failed or asset.upload_failed notification to *webhook_url*."""
-    await _deliver(
-        event=event,
-        webhook_url=webhook_url,
-        asset_id=asset_id,
-        sprint_id=sprint_id,
-        client_id=client_id,
-        generation_status="failed",
-        storage_status="failed",
-        storage_url=None,
-        provider_job_id=provider_job_id,
-    )
+    try:
+        await _deliver(
+            event=event,
+            webhook_url=webhook_url,
+            asset_id=asset_id,
+            sprint_id=sprint_id,
+            client_id=client_id,
+            generation_status="failed",
+            storage_status="failed",
+            storage_url=None,
+            provider_job_id=provider_job_id,
+        )
+    except Exception as exc:
+        log.warning(
+            "outbound_webhook.delivery_failed",
+            extra={"asset_id": asset_id, "event": event, "error": str(exc)},
+        )
 
 
 async def _deliver(
@@ -152,25 +164,24 @@ async def _deliver(
     if signature:
         headers["X-VOS-Signature"] = signature
 
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
-            response = await client.post(webhook_url, content=body, headers=headers)
-        if not response.is_success:
-            log.warning(
-                "outbound_webhook.non_2xx",
-                extra={
-                    "asset_id": asset_id,
-                    "event": event,
-                    "status_code": response.status_code,
-                },
-            )
-        else:
-            log.info(
-                "outbound_webhook.delivered",
-                extra={"asset_id": asset_id, "event": event},
-            )
-    except Exception as exc:
+    async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+        response = await client.post(webhook_url, content=body, headers=headers)
+
+    # Raise so that _deliver_async (Celery path) can retry on non-2xx.
+    # The public helpers (notify_job_completed / notify_job_failed) that need
+    # best-effort / swallowing behaviour wrap this call in their own try/except.
+    if not response.is_success:
         log.warning(
-            "outbound_webhook.delivery_failed",
-            extra={"asset_id": asset_id, "event": event, "error": str(exc)},
+            "outbound_webhook.non_2xx",
+            extra={
+                "asset_id": asset_id,
+                "event": event,
+                "status_code": response.status_code,
+            },
+        )
+        response.raise_for_status()
+    else:
+        log.info(
+            "outbound_webhook.delivered",
+            extra={"asset_id": asset_id, "event": event},
         )

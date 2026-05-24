@@ -363,3 +363,37 @@ def test_notify_upload_failed_skips_when_no_context() -> None:
         _notify_upload_failed(_ASSET_ID)
 
     mock_enqueue.assert_not_called()
+
+
+def test_notify_completed_swallows_broker_error() -> None:
+    """If enqueue_webhook_completed raises (e.g. broker down), _notify_completed must not
+    propagate the error — a broker outage must not corrupt a successful upload."""
+    with (
+        patch(
+            _GET_NOTIFY_CTX,
+            new_callable=AsyncMock,
+            return_value=(_SPRINT_ID, _CLIENT_ID, _WEBHOOK_URL),
+        ),
+        patch(_ENQUEUE_COMPLETED, side_effect=RuntimeError("broker unavailable")),
+    ):
+        from vos_studio_mcp.tasks.upload_video import _notify_completed
+
+        # Must not raise
+        _notify_completed(_ASSET_ID, "https://r2.example.com/video.mp4")
+
+
+def test_notify_upload_failed_swallows_broker_error() -> None:
+    """If enqueue_webhook_failed raises (e.g. broker down), _notify_upload_failed must not
+    propagate the error — a broker outage must not obscure the real failure reason."""
+    with (
+        patch(
+            _GET_NOTIFY_CTX,
+            new_callable=AsyncMock,
+            return_value=(_SPRINT_ID, _CLIENT_ID, _WEBHOOK_URL),
+        ),
+        patch(_ENQUEUE_FAILED, side_effect=RuntimeError("broker unavailable")),
+    ):
+        from vos_studio_mcp.tasks.upload_video import _notify_upload_failed
+
+        # Must not raise
+        _notify_upload_failed(_ASSET_ID)
