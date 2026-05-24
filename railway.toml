@@ -3,7 +3,8 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-healthcheckPath = "/health"
-healthcheckTimeout = 30
+# healthcheckPath omitted: applies to all services in this repo.
+# The web service is validated by Railway via port liveness.
+# The Celery worker does not serve HTTP — a healthcheckPath would always fail.
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
