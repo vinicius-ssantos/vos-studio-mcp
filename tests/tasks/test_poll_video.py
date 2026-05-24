@@ -11,7 +11,7 @@ _GET_SESSION = f"{_TASK_MODULE}.get_session"
 _GET_ADAPTER = f"{_TASK_MODULE}.get_adapter"
 _GET_ASSET = f"{_TASK_MODULE}.get_asset_with_client"
 _GET_NOTIFY_CTX = f"{_TASK_MODULE}.get_asset_notification_context"
-_NOTIFY_FAILED = f"{_TASK_MODULE}.notify_job_failed"
+_ENQUEUE_WEBHOOK_FAILED = f"{_TASK_MODULE}.enqueue_webhook_failed"
 _UPLOAD_TASK = "vos_studio_mcp.tasks.upload_video.upload_video_to_storage"
 
 
@@ -129,6 +129,60 @@ async def test_check_marks_failed_on_job_failure() -> None:
 
     assert result == "done"
     assert asset.generation_status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_check_enqueues_webhook_on_job_failure_with_webhook_url() -> None:
+    """When the job fails AND a webhook_url is configured, enqueue_webhook_failed
+    must be called with the correct event and IDs."""
+    asset = _mock_asset(status="pending")
+    adapter = MagicMock()
+    adapter.check_job_status = AsyncMock(
+        return_value=JobStatus(job_id="gen-123", status="failed", error="content violation")
+    )
+
+    with (
+        patch(_GET_SESSION, return_value=_session_ctx(asset)),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(_GET_ADAPTER, return_value=adapter),
+        patch(
+            _GET_NOTIFY_CTX,
+            new_callable=AsyncMock,
+            return_value=("sprint-1", "cli-001", "https://client.example.com/hook"),
+        ),
+        patch(_ENQUEUE_WEBHOOK_FAILED) as mock_enqueue,
+    ):
+        from vos_studio_mcp.tasks.poll_video import _check_and_update
+        result = await _check_and_update("asset-001")
+
+    assert result == "done"
+    mock_enqueue.assert_called_once()
+    kwargs = mock_enqueue.call_args.kwargs
+    assert kwargs["event"] == "asset.failed"
+    assert kwargs["asset_id"] == "asset-001"
+    assert kwargs["webhook_url"] == "https://client.example.com/hook"
+
+
+@pytest.mark.asyncio
+async def test_check_skips_enqueue_when_no_webhook_url() -> None:
+    """When get_asset_notification_context returns None values, no enqueue call is made."""
+    asset = _mock_asset(status="pending")
+    adapter = MagicMock()
+    adapter.check_job_status = AsyncMock(
+        return_value=JobStatus(job_id="gen-123", status="failed")
+    )
+
+    with (
+        patch(_GET_SESSION, return_value=_session_ctx(asset)),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(_GET_ADAPTER, return_value=adapter),
+        patch(_GET_NOTIFY_CTX, new_callable=AsyncMock, return_value=(None, None, None)),
+        patch(_ENQUEUE_WEBHOOK_FAILED) as mock_enqueue,
+    ):
+        from vos_studio_mcp.tasks.poll_video import _check_and_update
+        await _check_and_update("asset-001")
+
+    mock_enqueue.assert_not_called()
 
 
 @pytest.mark.asyncio
