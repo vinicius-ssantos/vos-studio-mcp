@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # Rate limiting
     rate_limit_enabled: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
 
+    # Provider quota (ADR-0034)
+    # Set to 0.0 to disable the global daily quota check.
+    provider_daily_limit_usd: float = Field(default=0.0, alias="PROVIDER_DAILY_LIMIT_USD")
+
     # Observability (ADR-0030)
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
     sentry_environment: str = Field(default="development", alias="SENTRY_ENVIRONMENT")

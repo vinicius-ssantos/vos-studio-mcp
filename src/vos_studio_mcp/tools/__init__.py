@@ -6,6 +6,9 @@ from vos_studio_mcp.tools.close_sprint import register_close_sprint_tools
 from vos_studio_mcp.tools.conclude_variant_test import register_conclude_variant_test_tools
 from vos_studio_mcp.tools.create_client import register_create_client_tools
 from vos_studio_mcp.tools.create_creative_sprint import register_create_sprint_tools
+from vos_studio_mcp.tools.get_provider_usage_summary import (
+    register_get_provider_usage_summary_tools,
+)
 from vos_studio_mcp.tools.get_sprint_status import register_get_sprint_status_tools
 from vos_studio_mcp.tools.get_video_job_status import register_get_video_job_status_tools
 from vos_studio_mcp.tools.list_sprint_assets import register_list_sprint_assets_tools
@@ -46,3 +49,4 @@ def register_tools(mcp: FastMCP) -> None:
     register_prepare_video_blueprint_tools(mcp)
     register_record_performance_metrics_tools(mcp)
     register_set_client_webhook_tools(mcp)
+    register_get_provider_usage_summary_tools(mcp)
