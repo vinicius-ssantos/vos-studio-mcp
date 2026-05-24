@@ -51,6 +51,7 @@ USER appuser
 
 EXPOSE 8000
 
-# Default: run the web server
-# Override CMD to run the Celery worker (see docker-compose.yml)
-CMD ["uvicorn", "vos_studio_mcp.server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default: run the web server.
+# PORT env var is injected by Railway/Render; falls back to 8000 for local/Docker Compose.
+# Override CMD to run the Celery worker (see docker-compose.yml).
+CMD ["sh", "-c", "uvicorn vos_studio_mcp.server:app --host 0.0.0.0 --port ${PORT:-8000}"]
