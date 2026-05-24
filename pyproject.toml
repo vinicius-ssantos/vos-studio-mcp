@@ -1,6 +1,6 @@
 [project]
 name = "vos-studio-mcp"
-version = "1.0.0"
+version = "1.0.1"
 description = "VOS Studio MCP — Creative operations server for AI-assisted agency workflows"
 requires-python = ">=3.12"
 dependencies = [
