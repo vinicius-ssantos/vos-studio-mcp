@@ -1,4 +1,98 @@
 services:
+  # ---------------------------------------------------------------------------
+  # Web — FastAPI / FastMCP server
+  # ---------------------------------------------------------------------------
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      OAUTH_ISSUER_URL: ${OAUTH_ISSUER_URL:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      DEV_BEARER_TOKEN: ${DEV_BEARER_TOKEN:-}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-r2}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-}
+      HIGGSFIELD_API_KEY: ${HIGGSFIELD_API_KEY:-}
+      FREEPIK_API_KEY: ${FREEPIK_API_KEY:-}
+      MAGNIFIC_API_KEY: ${MAGNIFIC_API_KEY:-}
+      WEBHOOK_SECRET_HIGGSFIELD: ${WEBHOOK_SECRET_HIGGSFIELD:-}
+      WEBHOOK_SECRET_FREEPIK: ${WEBHOOK_SECRET_FREEPIK:-}
+      WEBHOOK_SECRET_MAGNIFIC: ${WEBHOOK_SECRET_MAGNIFIC:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Worker — Celery (poll_video + upload_video tasks)
+  # ---------------------------------------------------------------------------
+  worker:
+    build: .
+    command: ["celery", "-A", "vos_studio_mcp.tasks.celery_app:celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-r2}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-}
+      HIGGSFIELD_API_KEY: ${HIGGSFIELD_API_KEY:-}
+      FREEPIK_API_KEY: ${FREEPIK_API_KEY:-}
+      MAGNIFIC_API_KEY: ${MAGNIFIC_API_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis — broker + result backend para Celery
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Postgres local — apenas para desenvolvimento local
+  # Em produção, usa Supabase (ADR-0007)
+  # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     environment:
@@ -14,16 +108,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    profiles:
+      - local  # só sobe com: docker compose --profile local up
 
 volumes:
   postgres_data:
+  redis_data:
