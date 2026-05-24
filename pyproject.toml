@@ -93,7 +93,6 @@ minor_tags = ["feat"]
 patch_tags = ["fix", "perf"]
 
 [tool.semantic_release.changelog]
-template_dir = ""        # use built-in template
 exclude_commit_patterns = [
     "^chore",
     "^ci",
