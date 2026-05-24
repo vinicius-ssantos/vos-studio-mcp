@@ -2,9 +2,11 @@
 
 from mcp.server.fastmcp import FastMCP
 
+from vos_studio_mcp.auth.context import get_current_client_id
 from vos_studio_mcp.schemas.pack import DashboardPackInput, DashboardPackResponse
 from vos_studio_mcp.services.providers.base import BudgetLimit, GenerationParams
 from vos_studio_mcp.services.providers.manual_dashboard import ManualDashboardAdapter
+from vos_studio_mcp.services.rate_limiter import check_rate_limit
 from vos_studio_mcp.services.sprint_service import get_sprint_status
 from vos_studio_mcp.tools._instrumentation import instrument
 
@@ -21,6 +23,10 @@ def register_prepare_dashboard_pack_tools(mcp: FastMCP) -> None:
         Returns checklist, naming convention, and QA criteria.
         After generation, call register_manual_asset with the result.
         """
+        client_id = get_current_client_id()
+        if client_id is not None:
+            await check_rate_limit("prepare_dashboard_pack", client_id)
+
         sprint_status = await get_sprint_status(data.sprint_id)
         if sprint_status.sprint_status != "open":
             return DashboardPackResponse(

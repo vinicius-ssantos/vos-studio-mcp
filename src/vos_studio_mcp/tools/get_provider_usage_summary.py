@@ -10,6 +10,7 @@ from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.budget import ProviderUsageSummaryInput, ProviderUsageSummaryResponse
 from vos_studio_mcp.services.budget_guard import get_provider_daily_summary
+from vos_studio_mcp.tools._instrumentation import instrument
 
 log = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ _UTC = datetime.UTC
 
 def register_get_provider_usage_summary_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def get_provider_usage_summary(data: ProviderUsageSummaryInput) -> ProviderUsageSummaryResponse:
         """Return today's provider API spend and remaining daily quota.
 
