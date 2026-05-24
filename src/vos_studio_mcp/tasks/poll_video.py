@@ -13,8 +13,8 @@ from vos_studio_mcp.services.database import (
     get_session,
 )
 from vos_studio_mcp.services.providers import get_adapter
-from vos_studio_mcp.services.webhook_notifier import notify_job_failed
 from vos_studio_mcp.tasks.celery_app import celery_app
+from vos_studio_mcp.tasks.notify_webhook import enqueue_webhook_failed
 from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
 
 log = logging.getLogger(__name__)
@@ -107,10 +107,10 @@ async def _check_and_update(asset_id: str) -> str:
                     "error": job_status.error,
                 },
             )
-            # Notify the client's webhook (best-effort)
+            # Enqueue a durable Celery webhook notification (best-effort, retryable)
             sprint_id, client_id, webhook_url = await get_asset_notification_context(asset_id)
             if webhook_url and sprint_id and client_id:
-                await notify_job_failed(
+                enqueue_webhook_failed(
                     asset_id=asset_id,
                     sprint_id=sprint_id,
                     client_id=client_id,

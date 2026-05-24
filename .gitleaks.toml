@@ -1,0 +1,11 @@
+title = "VOS Studio MCP"
+
+# Allowlist paths that intentionally contain test/CI fixture values that look
+# like secrets to generic scanners.  Real secrets are never committed — they
+# live in environment variables (.env is in .gitignore, ADR-0017).
+[allowlist]
+  description = "Exclude test fixtures and CI workflow config from secret scanning"
+  paths = [
+    '''tests/''',
+    '''\.github/workflows/''',
+  ]

@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     # Outbound webhook signing secret (Issue #33)
     outbound_webhook_secret: str = Field(default="", alias="OUTBOUND_WEBHOOK_SECRET")
 
+    # Rate limiting
+    rate_limit_enabled: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
+
     # Observability (ADR-0030)
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
     sentry_environment: str = Field(default="development", alias="SENTRY_ENVIRONMENT")

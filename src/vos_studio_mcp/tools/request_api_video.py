@@ -4,10 +4,12 @@ from mcp.server.fastmcp import FastMCP
 
 from vos_studio_mcp.schemas.api_video import ApiVideoInput, ApiVideoResponse
 from vos_studio_mcp.services.generation_service import request_api_video as _service
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_request_api_video_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
         """Queue a video generation job via the Higgsfield API.
 

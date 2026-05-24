@@ -8,7 +8,6 @@ import pytest
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.services.circuit_breaker import CircuitBreaker
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -117,7 +116,6 @@ class TestOpenState:
 class TestHalfOpenState:
     @pytest.mark.asyncio
     async def test_breaker_transitions_to_half_open_after_timeout(self) -> None:
-        import time
 
         breaker = CircuitBreaker("test", failure_threshold=1, recovery_timeout=0.05)
         with pytest.raises(VosError):

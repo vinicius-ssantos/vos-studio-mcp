@@ -4,10 +4,12 @@ from mcp.server.fastmcp import FastMCP
 
 from vos_studio_mcp.schemas.api_video import ListVideoJobsResponse
 from vos_studio_mcp.services.generation_service import list_video_jobs as _service
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_list_video_jobs_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def list_video_jobs(sprint_id: str, client_id: str) -> ListVideoJobsResponse:
         """Return all API-generated video jobs in a sprint with aggregated status counts.
 

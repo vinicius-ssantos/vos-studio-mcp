@@ -22,6 +22,7 @@ from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit
 from vos_studio_mcp.services.database import get_session, set_tenant_context
 from vos_studio_mcp.services.performance_record_service import get_top_performers
 from vos_studio_mcp.services.prompt_library_service import get_library_suggestions
+from vos_studio_mcp.services.rate_limiter import check_rate_limit
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ async def _find_idempotent_sprint(
 
 async def create_creative_sprint(data: SprintInput) -> SprintResponse:
     assert_owns_client(data.client_id)
+    await check_rate_limit("create_creative_sprint", data.client_id)
     async with get_session() as session:
         await set_tenant_context(session, data.client_id)
 

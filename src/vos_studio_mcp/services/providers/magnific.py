@@ -81,7 +81,8 @@ class MagnificAdapter:
                     f"{_BASE_URL}/upscaling",
                     headers=self._headers(),
                     json=payload,
-                )
+                ),
+                operation="generate_image",
             )
 
         if response.status_code == 402:
@@ -118,7 +119,8 @@ class MagnificAdapter:
                 client.get(
                     f"{_BASE_URL}/upscaling/{job_id}",
                     headers=self._headers(),
-                )
+                ),
+                operation="check_job_status",
             )
 
         if not response.is_success:

@@ -4,10 +4,12 @@ from mcp.server.fastmcp import FastMCP
 
 from vos_studio_mcp.schemas.prompt_template import SearchLibraryInput, SearchLibraryResponse
 from vos_studio_mcp.services.prompt_library_service import search_library as _service
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_search_library_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def search_library(data: SearchLibraryInput) -> SearchLibraryResponse:
         """Search the cross-client prompt library by keyword and/or tag filters.
 

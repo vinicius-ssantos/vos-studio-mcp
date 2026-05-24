@@ -1,6 +1,5 @@
 """Tests for Prometheus /metrics endpoint and metrics helpers (Issue #30)."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -35,7 +34,6 @@ class TestMetricsEndpoint:
 
 class TestMetricsHelpers:
     def test_record_provider_call_success(self) -> None:
-        from prometheus_client import REGISTRY
 
         from vos_studio_mcp.observability.metrics import PROVIDER_CALLS, record_provider_call
 

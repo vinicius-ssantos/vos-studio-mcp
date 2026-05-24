@@ -5,10 +5,12 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from sqlalchemy import text
+from sqlalchemy.exc import InternalError as SAInternalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from db.models import Asset
 from vos_studio_mcp.config.env import get_settings
+from vos_studio_mcp.errors import ErrorCode, VosError
 
 _engine = create_async_engine(get_settings().database_url, echo=False, pool_pre_ping=True)
 _session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
@@ -18,8 +20,23 @@ _session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
 
 @asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield an async database session.
+
+    Maps PostgreSQL row-level security violations to VosError(RLS_DENIED) so
+    that any code path that accidentally bypasses the auth guard surfaces a
+    clean, typed error rather than an unhandled 500.
+    """
     async with _session_factory() as session:
-        yield session
+        try:
+            yield session
+        except SAInternalError as exc:
+            if "row-level security" in str(exc.orig).lower():
+                raise VosError(
+                    ErrorCode.RLS_DENIED,
+                    "Access denied: the database rejected the query due to a "
+                    "row-level security policy violation.",
+                ) from exc
+            raise
 
 
 async def set_tenant_context(session: AsyncSession, client_id: str) -> None:

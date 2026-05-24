@@ -9,6 +9,9 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import InternalError as SAInternalError
+
+from vos_studio_mcp.errors import ErrorCode, VosError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,6 +39,12 @@ def _row(value: str) -> tuple:
 # ---------------------------------------------------------------------------
 
 
+def _rls_internal_error() -> SAInternalError:
+    """Build a SQLAlchemy InternalError that mimics a PostgreSQL RLS violation."""
+    orig = Exception("new row violates row-level security policy for table \"sprints\"")
+    return SAInternalError("", {}, orig)
+
+
 @pytest.mark.asyncio
 async def test_get_session_yields_session_from_factory() -> None:
     from vos_studio_mcp.services.database import get_session
@@ -45,9 +54,45 @@ async def test_get_session_yields_session_from_factory() -> None:
     mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):
+    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):  # noqa: SIM117
         async with get_session() as session:
             assert session is mock_session
+
+
+@pytest.mark.asyncio
+async def test_get_session_maps_rls_violation_to_vos_error() -> None:
+    """An InternalError whose orig contains 'row-level security' must be
+    re-raised as VosError(RLS_DENIED) so callers get a clean typed error."""
+    from vos_studio_mcp.services.database import get_session
+
+    mock_session = AsyncMock()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):  # noqa: SIM117
+        with pytest.raises(VosError) as exc_info:
+            async with get_session():
+                raise _rls_internal_error()
+
+    assert exc_info.value.error_code == ErrorCode.RLS_DENIED
+
+
+@pytest.mark.asyncio
+async def test_get_session_reraises_non_rls_internal_error() -> None:
+    """InternalError unrelated to RLS must propagate unchanged."""
+    from vos_studio_mcp.services.database import get_session
+
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    other_error = SAInternalError("", {}, Exception("deadlock detected"))
+
+    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):  # noqa: SIM117
+        with pytest.raises(SAInternalError):
+            async with get_session():
+                raise other_error
 
 
 # ---------------------------------------------------------------------------
@@ -166,3 +211,53 @@ async def test_set_tenant_context_from_sprint_raises_when_sprint_not_found() -> 
 
     with pytest.raises(LookupError, match="not found"):
         await set_tenant_context_from_sprint(session, str(uuid.uuid4()))
+
+
+# ---------------------------------------------------------------------------
+# get_asset_notification_context
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_asset_notification_context_returns_tuple_when_found() -> None:
+    """Must return (sprint_id, client_id, webhook_url) for a known asset."""
+    asset_id = str(uuid.uuid4())
+    sprint_id = str(uuid.uuid4())
+    webhook = "https://client.example.com/hook"
+
+    result_row = MagicMock()
+    result_row.first.return_value = (sprint_id, _CLIENT_ID, webhook)
+
+    mock_ctx = MagicMock()
+    # execute calls: bypass_rls | SELECT query
+    session = _make_session(MagicMock(), result_row)
+    mock_ctx.__aenter__ = AsyncMock(return_value=session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):
+        from vos_studio_mcp.services.database import get_asset_notification_context
+        s_id, c_id, w_url = await get_asset_notification_context(asset_id)
+
+    assert s_id == sprint_id
+    assert c_id == _CLIENT_ID
+    assert w_url == webhook
+
+
+@pytest.mark.asyncio
+async def test_get_asset_notification_context_returns_nones_when_not_found() -> None:
+    """Must return (None, None, None) when the asset does not exist."""
+    asset_id = str(uuid.uuid4())
+
+    result_empty = MagicMock()
+    result_empty.first.return_value = None
+
+    mock_ctx = MagicMock()
+    session = _make_session(MagicMock(), result_empty)
+    mock_ctx.__aenter__ = AsyncMock(return_value=session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):
+        from vos_studio_mcp.services.database import get_asset_notification_context
+        result = await get_asset_notification_context(asset_id)
+
+    assert result == (None, None, None)

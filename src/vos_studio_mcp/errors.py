@@ -23,6 +23,7 @@ class ErrorCode(StrEnum):
     # Security
     RLS_DENIED = "rls_denied"
     AUTH_REQUIRED = "auth_required"
+    RATE_LIMITED = "rate_limited"
 
 
 class VosError(Exception):

@@ -20,6 +20,7 @@ from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit
 from vos_studio_mcp.services.database import get_asset_with_client, get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
 from vos_studio_mcp.services.providers.base import BudgetLimit, GenerationParams
+from vos_studio_mcp.services.rate_limiter import check_rate_limit
 from vos_studio_mcp.tasks.poll_video import poll_video_job
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ log = logging.getLogger(__name__)
 
 async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
     assert_owns_client(data.client_id)
+    await check_rate_limit("request_api_video", data.client_id)
 
     adapter = get_adapter("higgsfield")
 

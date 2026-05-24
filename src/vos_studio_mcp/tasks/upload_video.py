@@ -11,8 +11,8 @@ from vos_studio_mcp.services.database import (
     get_asset_with_client,
     get_session,
 )
-from vos_studio_mcp.services.webhook_notifier import notify_job_completed, notify_job_failed
 from vos_studio_mcp.tasks.celery_app import celery_app
+from vos_studio_mcp.tasks.notify_webhook import enqueue_webhook_completed, enqueue_webhook_failed
 
 log = logging.getLogger(__name__)
 
@@ -88,29 +88,42 @@ async def _mark_upload_failed(asset_id: str) -> None:
 
 
 def _notify_completed(asset_id: str, storage_url: str) -> None:
-    """Fire-and-forget: notify the client's webhook that the asset is ready."""
+    """Fetch webhook context from DB and enqueue a durable Celery webhook delivery.
+
+    Errors are swallowed so that a Celery broker outage does not corrupt a
+    successfully-stored upload into a failure (review comment, Issue #33).
+    """
     async def _run() -> None:
         sprint_id, client_id, webhook_url = await get_asset_notification_context(asset_id)
         if webhook_url and sprint_id and client_id:
-            await notify_job_completed(
+            enqueue_webhook_completed(
                 asset_id=asset_id,
                 sprint_id=sprint_id,
                 client_id=client_id,
                 webhook_url=webhook_url,
                 storage_url=storage_url,
                 provider_job_id=None,  # not available here; kept in DB
-                storage_status="stored",
             )
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except Exception as exc:
+        log.warning(
+            "notify_completed.enqueue_failed",
+            extra={"asset_id": asset_id, "error": str(exc)},
+        )
 
 
 def _notify_upload_failed(asset_id: str) -> None:
-    """Fire-and-forget: notify the client's webhook that the upload failed."""
+    """Fetch webhook context from DB and enqueue a durable Celery failure notification.
+
+    Errors are swallowed so that a broker outage does not mask the real failure
+    reason that was already recorded (review comment, Issue #33).
+    """
     async def _run() -> None:
         sprint_id, client_id, webhook_url = await get_asset_notification_context(asset_id)
         if webhook_url and sprint_id and client_id:
-            await notify_job_failed(
+            enqueue_webhook_failed(
                 asset_id=asset_id,
                 sprint_id=sprint_id,
                 client_id=client_id,
@@ -119,4 +132,10 @@ def _notify_upload_failed(asset_id: str) -> None:
                 event="asset.upload_failed",
             )
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except Exception as exc:
+        log.warning(
+            "notify_upload_failed.enqueue_failed",
+            extra={"asset_id": asset_id, "error": str(exc)},
+        )

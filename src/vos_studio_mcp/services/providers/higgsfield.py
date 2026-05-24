@@ -96,7 +96,8 @@ class HiggsFieldAdapter:
         breaker = get_breaker("higgsfield")
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await breaker.execute(
-                client.post(endpoint, headers=self._headers(), json=payload)
+                client.post(endpoint, headers=self._headers(), json=payload),
+                operation="generate_video",
             )
 
         if response.status_code == 402:
@@ -126,7 +127,8 @@ class HiggsFieldAdapter:
         status_url = f"{_BASE_URL}/v1/video/status/{job_id}"
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await breaker.execute(
-                client.get(status_url, headers=self._headers())
+                client.get(status_url, headers=self._headers()),
+                operation="check_job_status",
             )
 
         if not response.is_success:
