@@ -6,10 +6,12 @@ from vos_studio_mcp.schemas.sprint import SprintInput, SprintResponse
 from vos_studio_mcp.services.sprint_service import (
     create_creative_sprint as create_sprint_service,
 )
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_create_sprint_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def create_creative_sprint(data: SprintInput) -> SprintResponse:
         """Open a new creative sprint with a pre-authorized budget (ADR-0005).
 

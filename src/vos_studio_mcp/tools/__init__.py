@@ -13,7 +13,6 @@ from vos_studio_mcp.tools.list_video_jobs import register_list_video_jobs_tools
 from vos_studio_mcp.tools.prepare_dashboard_pack import register_prepare_dashboard_pack_tools
 from vos_studio_mcp.tools.prepare_video_blueprint import register_prepare_video_blueprint_tools
 from vos_studio_mcp.tools.promote_to_library import register_promote_to_library_tools
-from vos_studio_mcp.tools.search_library import register_search_library_tools
 from vos_studio_mcp.tools.record_asset_performance import register_record_asset_performance_tools
 from vos_studio_mcp.tools.record_performance_metrics import (
     register_record_performance_metrics_tools,
@@ -21,6 +20,7 @@ from vos_studio_mcp.tools.record_performance_metrics import (
 from vos_studio_mcp.tools.register_manual_asset import register_manual_asset_tools
 from vos_studio_mcp.tools.request_api_video import register_request_api_video_tools
 from vos_studio_mcp.tools.save_brand_kit import register_save_brand_kit_tools
+from vos_studio_mcp.tools.search_library import register_search_library_tools
 from vos_studio_mcp.tools.status import register_status_tools
 
 

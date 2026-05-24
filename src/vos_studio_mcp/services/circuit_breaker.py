@@ -26,6 +26,15 @@ _TRIPPABLE: frozenset[ErrorCode] = frozenset(
 )
 
 
+def _record_metric(provider: str, operation: str, *, success: bool) -> None:
+    """Record a provider call metric.  Lazy import avoids circular dependency."""
+    try:
+        from vos_studio_mcp.observability.metrics import record_provider_call
+        record_provider_call(provider, operation, success=success)
+    except Exception:
+        pass  # metrics must never affect request path
+
+
 class CircuitBreaker:
     """Per-provider circuit breaker.
 
@@ -68,14 +77,16 @@ class CircuitBreaker:
     # Execute a coroutine through the breaker
     # ------------------------------------------------------------------
 
-    async def execute(self, coro: Coroutine[Any, Any, T]) -> T:
+    async def execute(self, coro: Coroutine[Any, Any, T], operation: str = "call") -> T:
         """Await *coro* if the circuit is closed or half-open.
 
         Raises VosError(PROVIDER_UNAVAILABLE) immediately if the circuit is open.
+        *operation* is used as a label in Prometheus metrics.
         """
         current_state = self.state
 
         if current_state == "open":
+            _record_metric(self.name, operation, success=False)
             raise VosError(
                 ErrorCode.PROVIDER_UNAVAILABLE,
                 f"Provider '{self.name}' is temporarily unavailable "
@@ -87,13 +98,16 @@ class CircuitBreaker:
         except VosError as exc:
             if exc.error_code in _TRIPPABLE:
                 self._on_failure(current_state)
+            _record_metric(self.name, operation, success=False)
             raise
         except Exception:
             # Uncaught network / unexpected errors also trip the breaker.
             self._on_failure(current_state)
+            _record_metric(self.name, operation, success=False)
             raise
         else:
             self._on_success()
+            _record_metric(self.name, operation, success=True)
             return result
 
     # ------------------------------------------------------------------

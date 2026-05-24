@@ -76,7 +76,8 @@ class FreepikAdapter:
                     f"{_BASE_URL}/ai/text-to-image",
                     headers=self._headers(),
                     json=payload,
-                )
+                ),
+                operation="generate_image",
             )
 
         if response.status_code == 402:
@@ -113,7 +114,8 @@ class FreepikAdapter:
                 client.get(
                     f"{_BASE_URL}/ai/text-to-image/{job_id}",
                     headers=self._headers(),
-                )
+                ),
+                operation="check_job_status",
             )
 
         if not response.is_success:

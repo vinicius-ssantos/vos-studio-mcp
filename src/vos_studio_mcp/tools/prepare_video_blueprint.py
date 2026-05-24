@@ -6,10 +6,12 @@ from vos_studio_mcp.schemas.blueprint import VideoBlueprintInput, VideoBlueprint
 from vos_studio_mcp.services.blueprint_service import (
     prepare_video_blueprint as _prepare_video_blueprint,
 )
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_prepare_video_blueprint_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def prepare_video_blueprint(data: VideoBlueprintInput) -> VideoBlueprintResponse:
         """Compose a director-level video blueprint from sprint and brand kit context.
 

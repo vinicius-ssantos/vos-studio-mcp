@@ -4,10 +4,12 @@ from mcp.server.fastmcp import FastMCP
 
 from vos_studio_mcp.schemas.api_video import VideoJobStatusResponse
 from vos_studio_mcp.services.generation_service import get_video_job_status as _service
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_get_video_job_status_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def get_video_job_status(asset_id: str) -> VideoJobStatusResponse:
         """Check the current status of an API-generated video asset.
 

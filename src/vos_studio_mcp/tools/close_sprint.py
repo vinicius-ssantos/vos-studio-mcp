@@ -4,10 +4,12 @@ from mcp.server.fastmcp import FastMCP
 
 from vos_studio_mcp.schemas.sprint import CloseSprintInput, CloseSprintResponse
 from vos_studio_mcp.services.sprint_service import close_sprint as close_sprint_service
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_close_sprint_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def close_sprint(data: CloseSprintInput) -> CloseSprintResponse:
         """Close a creative sprint. No new assets can be prepared after closing.
 

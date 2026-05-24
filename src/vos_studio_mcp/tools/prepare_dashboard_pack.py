@@ -6,12 +6,14 @@ from vos_studio_mcp.schemas.pack import DashboardPackInput, DashboardPackRespons
 from vos_studio_mcp.services.providers.base import BudgetLimit, GenerationParams
 from vos_studio_mcp.services.providers.manual_dashboard import ManualDashboardAdapter
 from vos_studio_mcp.services.sprint_service import get_sprint_status
+from vos_studio_mcp.tools._instrumentation import instrument
 
 _adapter = ManualDashboardAdapter()
 
 
 def register_prepare_dashboard_pack_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def prepare_dashboard_pack(data: DashboardPackInput) -> DashboardPackResponse:
         """Prepare a manual generation pack for the operator to execute on the provider dashboard.
 
