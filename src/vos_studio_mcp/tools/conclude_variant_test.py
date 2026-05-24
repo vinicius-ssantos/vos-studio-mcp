@@ -6,10 +6,12 @@ from vos_studio_mcp.schemas.variant import ConcludeVariantTestInput, ConcludeVar
 from vos_studio_mcp.services.variant_service import (
     conclude_variant_test as conclude_variant_test_service,
 )
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_conclude_variant_test_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def conclude_variant_test(
         data: ConcludeVariantTestInput,
     ) -> ConcludeVariantTestResponse:

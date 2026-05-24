@@ -11,3 +11,20 @@ class ServerStatus(BaseModel):
     version: str
     environment: str = Field(default="local")
     next_action: str | None = None
+
+
+class ComponentStatus(BaseModel):
+    """Health status for a single infrastructure component."""
+
+    status: str  # "ok" | "degraded" | "down"
+    latency_ms: float | None = None
+    detail: str | None = None
+
+
+class HealthResponse(BaseModel):
+    """Detailed health check response with per-component status."""
+
+    status: str  # "ok" | "degraded" | "down"
+    service: str
+    version: str
+    components: dict[str, ComponentStatus]

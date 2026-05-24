@@ -6,10 +6,12 @@ from vos_studio_mcp.schemas.performance import PerformanceInput, PerformanceResp
 from vos_studio_mcp.services.performance_service import (
     record_asset_performance as record_service,
 )
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_record_asset_performance_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def record_asset_performance(data: PerformanceInput) -> PerformanceResponse:
         """Record the real-world performance of a registered asset (ADR-0025).
 

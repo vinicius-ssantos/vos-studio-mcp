@@ -7,10 +7,12 @@ from vos_studio_mcp.schemas.prompt_template import PromoteToLibraryInput, Promot
 from vos_studio_mcp.services.prompt_library_service import (
     promote_to_library as promote_to_library_service,
 )
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_promote_to_library_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def promote_to_library(data: PromoteToLibraryInput) -> PromoteToLibraryResponse:
         """Promote an anonymized prompt version to the cross-client prompt library.
 

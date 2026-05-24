@@ -1,6 +1,6 @@
 """Prompt template schemas for cross-client prompt library (ADR-0029)."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class PromoteToLibraryInput(BaseModel):
@@ -41,3 +41,56 @@ class PromoteToLibraryResponse(BaseModel):
     summary: str
     next_action: str
     anonymization_checklist: list[str]
+
+
+class SearchLibraryInput(BaseModel):
+    """Input for search_library — at least one filter must be provided."""
+
+    query: str | None = Field(
+        default=None,
+        description="Keyword(s) to match against template name, description, and prompt text",
+    )
+    industry: list[str] = Field(default_factory=list)
+    format: list[str] = Field(default_factory=list)
+    objective: list[str] = Field(default_factory=list)
+    platform: list[str] = Field(default_factory=list)
+    min_tier: str | None = Field(
+        default=None,
+        description="Minimum performance tier: 'experimental', 'tested', or 'top_performer'",
+    )
+    limit: int = Field(default=10, ge=1, le=50)
+
+    @model_validator(mode="after")
+    def require_at_least_one_filter(self) -> "SearchLibraryInput":
+        has_filter = (
+            self.query is not None
+            or self.industry
+            or self.format
+            or self.objective
+            or self.platform
+            or self.min_tier is not None
+        )
+        if not has_filter:
+            raise ValueError("At least one filter (query, industry, format, objective, platform, or min_tier) is required")
+        return self
+
+
+class SearchLibraryResult(BaseModel):
+    template_id: str
+    name: str
+    description: str
+    performance_tier: str
+    avg_ctr: float | None
+    usage_count: int
+    industry: list[str]
+    format: list[str]
+    objective: list[str]
+    platform: list[str]
+    prompt_preview: str  # first 300 chars of anonymized template
+
+
+class SearchLibraryResponse(BaseModel):
+    status: str
+    total: int
+    results: list[SearchLibraryResult]
+    next_action: str

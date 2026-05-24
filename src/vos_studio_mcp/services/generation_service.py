@@ -8,11 +8,19 @@ from sqlalchemy import func, select
 from db.models import Asset, Sprint
 from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
-from vos_studio_mcp.schemas.api_video import ApiVideoInput, ApiVideoResponse, VideoJobStatusResponse
+from vos_studio_mcp.schemas.api_video import (
+    ApiVideoInput,
+    ApiVideoResponse,
+    JobCounts,
+    ListVideoJobsResponse,
+    VideoJobStatusResponse,
+    VideoJobSummary,
+)
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_asset_with_client, get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
 from vos_studio_mcp.services.providers.base import BudgetLimit, GenerationParams
+from vos_studio_mcp.services.rate_limiter import check_rate_limit
 from vos_studio_mcp.tasks.poll_video import poll_video_job
 
 log = logging.getLogger(__name__)
@@ -20,6 +28,7 @@ log = logging.getLogger(__name__)
 
 async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
     assert_owns_client(data.client_id)
+    await check_rate_limit("request_api_video", data.client_id)
 
     adapter = get_adapter("higgsfield")
 
@@ -178,4 +187,67 @@ async def get_video_job_status(asset_id: str) -> VideoJobStatusResponse:
         provider_job_id=asset.provider_job_id,
         summary=_SUMMARY.get(gen_status, f"Unknown status: {gen_status}"),
         next_action=_NEXT_ACTION.get(gen_status, "get_video_job_status"),
+    )
+
+
+async def list_video_jobs(sprint_id: str, client_id: str) -> ListVideoJobsResponse:
+    """Return all API-generated assets for a sprint with aggregated status counts.
+
+    Only returns assets with a provider_job_id (API-generated). Manual assets
+    are excluded. Respects RLS — client_id must own the sprint.
+    """
+    assert_owns_client(client_id)
+
+    async with get_session() as session:
+        await set_tenant_context(session, client_id)
+
+        sprint = await session.get(Sprint, uuid.UUID(sprint_id))
+        if sprint is None:
+            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {sprint_id} not found")
+        if str(sprint.client_id) != client_id:
+            raise VosError(ErrorCode.INVALID_INPUT, "sprint does not belong to this client")
+
+        result = await session.execute(
+            select(Asset)
+            .where(
+                Asset.sprint_id == uuid.UUID(sprint_id),
+                Asset.provider_job_id.is_not(None),
+            )
+            .order_by(Asset.created_at.desc())
+        )
+        assets = list(result.scalars().all())
+
+    jobs = [
+        VideoJobSummary(
+            asset_id=str(a.id),
+            provider_job_id=a.provider_job_id,
+            generation_status=a.generation_status,
+            storage_status=a.storage_status,
+            storage_url=a.storage_url,
+        )
+        for a in assets
+    ]
+
+    counts = JobCounts(
+        total=len(jobs),
+        completed=sum(1 for j in jobs if j.generation_status == "completed"),
+        processing=sum(1 for j in jobs if j.generation_status == "processing"),
+        pending=sum(1 for j in jobs if j.generation_status == "pending"),
+        failed=sum(1 for j in jobs if j.generation_status == "failed"),
+    )
+
+    all_done = counts.completed + counts.failed == counts.total
+    any_processing = counts.processing > 0 or counts.pending > 0
+    next_action = (
+        "prepare_dashboard_pack" if all_done and counts.completed > 0
+        else "poll_again" if any_processing
+        else "request_api_video"
+    )
+
+    return ListVideoJobsResponse(
+        status="ok",
+        sprint_id=sprint_id,
+        jobs=jobs,
+        summary=counts,
+        next_action=next_action,
     )

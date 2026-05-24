@@ -9,6 +9,7 @@ import httpx
 
 from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.errors import ErrorCode, VosError
+from vos_studio_mcp.services.circuit_breaker import get_breaker
 from vos_studio_mcp.services.providers.base import (
     CostEstimate,
     GenerationParams,
@@ -73,11 +74,15 @@ class MagnificAdapter:
             extra={"sprint_id": params.sprint_id, "scale": scale},
         )
 
+        breaker = get_breaker("magnific")
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{_BASE_URL}/upscaling",
-                headers=self._headers(),
-                json=payload,
+            response = await breaker.execute(
+                client.post(
+                    f"{_BASE_URL}/upscaling",
+                    headers=self._headers(),
+                    json=payload,
+                ),
+                operation="generate_image",
             )
 
         if response.status_code == 402:
@@ -108,10 +113,14 @@ class MagnificAdapter:
         if not get_settings().magnific_api_key:
             raise VosError(ErrorCode.PROVIDER_ERROR, "MAGNIFIC_API_KEY is not configured")
 
+        breaker = get_breaker("magnific")
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                f"{_BASE_URL}/upscaling/{job_id}",
-                headers=self._headers(),
+            response = await breaker.execute(
+                client.get(
+                    f"{_BASE_URL}/upscaling/{job_id}",
+                    headers=self._headers(),
+                ),
+                operation="check_job_status",
             )
 
         if not response.is_success:

@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import sentry_sdk
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from mcp.server.fastmcp import FastMCP
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.fastapi import FastApiIntegration
@@ -15,9 +15,13 @@ from vos_studio_mcp.auth.middleware import auth_middleware
 from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.errors import VosError
 from vos_studio_mcp.observability.logging import configure_logging
-from vos_studio_mcp.observability.middleware import correlation_middleware
+from vos_studio_mcp.observability.metrics import metrics_response
+from vos_studio_mcp.observability.middleware import (
+    correlation_middleware,
+    metrics_instrumentation_middleware,
+)
 from vos_studio_mcp.routes.webhooks import router as webhooks_router
-from vos_studio_mcp.services.status import get_server_status
+from vos_studio_mcp.services.status import get_health
 from vos_studio_mcp.tools import register_tools
 
 log = logging.getLogger(__name__)
@@ -38,9 +42,11 @@ mcp = FastMCP(settings.mcp_server_name)
 register_tools(mcp)
 
 app = FastAPI(title=settings.mcp_server_name, debug=settings.debug)
-# Middleware executes in reverse registration order: correlation runs first, then auth.
+# Middleware executes in reverse registration order:
+# metrics_instrumentation runs outermost, then correlation, then auth.
 app.middleware("http")(auth_middleware)
 app.middleware("http")(correlation_middleware)
+app.middleware("http")(metrics_instrumentation_middleware)
 # Webhook routes bypass auth middleware via _OPEN_PREFIXES in auth/middleware.py
 app.include_router(webhooks_router)
 
@@ -56,14 +62,31 @@ async def vos_error_handler(_request: Request, exc: VosError) -> JSONResponse:
 
 
 @app.get("/health")
-async def health() -> dict[str, str | None]:
-    """Return a minimal HTTP health check payload."""
-    status = get_server_status(settings)
-    return {
-        "status": status.status,
-        "service": status.service,
-        "version": status.version,
-    }
+async def health() -> dict[str, object]:
+    """Return a detailed health check with per-component status.
+
+    Overall status:
+    - "ok"       — all components healthy
+    - "degraded" — celery worker unreachable (web still serves)
+    - "down"     — database or Redis unavailable
+    """
+    result = await get_health()
+    return result.model_dump()
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    """Expose Prometheus metrics for scraping.
+
+    Returns standard Prometheus text format with:
+    - vos_http_requests_total
+    - vos_http_request_duration_seconds
+    - vos_provider_calls_total
+    - vos_circuit_breaker_open
+    - vos_mcp_tool_calls_total
+    """
+    body, content_type = metrics_response()
+    return Response(content=body, media_type=content_type)
 
 
 def _mount_mcp_app(fastapi_app: FastAPI, mcp_server: FastMCP) -> None:

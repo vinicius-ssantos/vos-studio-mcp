@@ -9,6 +9,8 @@ _STORAGE = "vos_studio_mcp.tasks.upload_video.storage"
 _GET_CLIENT_ID = f"{_TASK_MODULE}._get_client_id"
 _UPDATE_URL = f"{_TASK_MODULE}._update_storage_url"
 _MARK_FAILED = f"{_TASK_MODULE}._mark_upload_failed"
+_NOTIFY_COMPLETED = f"{_TASK_MODULE}._notify_completed"
+_NOTIFY_UPLOAD_FAILED = f"{_TASK_MODULE}._notify_upload_failed"
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +187,7 @@ def test_upload_video_to_storage_success() -> None:
             new=AsyncMock(),
         ) as mock_update,
         patch("vos_studio_mcp.tasks.upload_video.storage") as mock_storage,
+        patch(_NOTIFY_COMPLETED),
     ):
         mock_storage.download_video.return_value = b"video-data"
         mock_storage.upload_video.return_value = "https://r2.example.com/video.mp4"
@@ -228,6 +231,7 @@ def test_upload_video_to_storage_marks_failed_after_max_retries() -> None:
             "vos_studio_mcp.tasks.upload_video._mark_upload_failed",
             new=mock_mark,
         ),
+        patch(_NOTIFY_UPLOAD_FAILED),
         patch("vos_studio_mcp.tasks.upload_video.storage") as mock_storage,
         patch.object(upload_video_to_storage, "retry", side_effect=MaxRetriesExceededError()),
     ):
@@ -259,6 +263,7 @@ def test_upload_video_to_storage_retries_on_transient_error() -> None:
             "vos_studio_mcp.tasks.upload_video._mark_upload_failed",
             new=mock_mark,
         ),
+        patch(_NOTIFY_UPLOAD_FAILED),
         patch("vos_studio_mcp.tasks.upload_video.storage") as mock_storage,
         patch.object(upload_video_to_storage, "retry", side_effect=Retry()),
     ):

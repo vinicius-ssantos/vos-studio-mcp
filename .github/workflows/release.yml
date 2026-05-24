@@ -1,0 +1,62 @@
+name: Release
+
+# Triggered on every push to main (after a PR is merged).
+# python-semantic-release inspects conventional commits since the last tag,
+# determines the next version, updates pyproject.toml + __init__.py +
+# CHANGELOG.md, creates a git tag, and publishes a GitHub Release.
+#
+# Bump rules (conventional commits):
+#   feat:             → minor  (0.1.x → 0.2.0)
+#   fix: / perf:      → patch  (0.1.0 → 0.1.1)
+#   BREAKING CHANGE:  → major  (0.x.x → 1.0.0)
+#   chore/ci/docs/…  → no bump (skipped)
+#
+# Skips release if semantic-release decides no version bump is needed.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # push version bump commit + tag + GitHub Release
+  id-token: write   # future: PyPI trusted publishing
+
+jobs:
+  release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    concurrency: release   # prevent parallel release runs
+
+    steps:
+      - name: Checkout (full history for changelog)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dev dependencies
+        run: uv sync --dev
+
+      - name: Run semantic-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # `version` bumps files, commits, creates + pushes the git tag.
+        # `publish` creates the GitHub Release from the pushed tag.
+        # Skip both steps if this commit was made by semantic-release itself.
+        run: |
+          if git log -1 --pretty=%an | grep -q "semantic-release"; then
+            echo "Skipping — commit is from semantic-release itself"
+            exit 0
+          fi
+          uv run semantic-release version
+          uv run semantic-release publish

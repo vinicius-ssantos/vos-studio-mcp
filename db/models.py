@@ -30,6 +30,7 @@ class Client(Base):
     contact_name: Mapped[str | None] = mapped_column(String(200))
     contact_email: Mapped[str | None] = mapped_column(String(254))
     notes: Mapped[str | None] = mapped_column(Text)
+    webhook_url: Mapped[str | None] = mapped_column(String(2048))  # outbound job notifications
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -89,6 +90,9 @@ class Sprint(Base):
     alert_threshold_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.8)
     spent_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     sprint_status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )  # (client_id, idempotency_key) unique enforced by migration
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

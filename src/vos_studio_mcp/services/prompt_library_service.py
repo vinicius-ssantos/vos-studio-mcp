@@ -12,6 +12,9 @@ from vos_studio_mcp.schemas.prompt_template import (
     PromoteToLibraryInput,
     PromoteToLibraryResponse,
     PromptTemplateSuggestion,
+    SearchLibraryInput,
+    SearchLibraryResponse,
+    SearchLibraryResult,
 )
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session
@@ -90,7 +93,7 @@ async def promote_to_library(
         "prompt_library.promoted",
         extra={
             "template_id": str(template.id),
-            "name": template.name,
+            "template_name": template.name,
             "sprint_id": data.sprint_id,
             "contributed_by": operator_email,
         },
@@ -148,3 +151,92 @@ async def get_library_suggestions(
         for t in templates
         if _matches(t)
     ]
+
+
+# Performance-tier ordering for min_tier filtering.
+_TIER_RANK: dict[str, int] = {
+    "experimental": 0,
+    "tested": 1,
+    "top_performer": 2,
+}
+
+
+async def search_library(data: SearchLibraryInput) -> SearchLibraryResponse:
+    """Full-text + faceted search over the cross-client prompt library.
+
+    Keyword search (data.query) matches against name, description, and
+    prompt_template via case-insensitive substring matching in Python
+    (no FTS extension required).  Tag filters (industry, format, objective,
+    platform) and min_tier narrow the result set.  Results are ranked by
+    performance tier (top_performer first), then by usage_count descending.
+    """
+    async with get_session() as session:
+        stmt = (
+            select(PromptTemplate)
+            .where(PromptTemplate.performance_tier != "deprecated")
+            .order_by(PromptTemplate.usage_count.desc())
+            .limit(data.limit * 10)  # over-fetch so we can filter in Python
+        )
+        raw = list(await session.scalars(stmt))
+
+    def _tier_rank(tier: str) -> int:
+        return _TIER_RANK.get(tier, -1)
+
+    min_rank = _tier_rank(data.min_tier) if data.min_tier else -1
+
+    def _matches(t: PromptTemplate) -> bool:
+        # keyword search across name + description + template text
+        if data.query:
+            needle = data.query.lower()
+            haystack = " ".join(
+                filter(None, [t.name, getattr(t, "description", None), t.prompt_template])
+            ).lower()
+            if needle not in haystack:
+                return False
+
+        # tag filters — any overlap is sufficient (OR within a facet, AND between facets)
+        t_industry: list[str] = t.industry or []
+        t_format: list[str] = t.format or []
+        t_objective: list[str] = t.objective or []
+        t_platform: list[str] = t.platform or []
+        if data.industry and not set(data.industry) & set(t_industry):
+            return False
+        if data.format and not set(data.format) & set(t_format):
+            return False
+        if data.objective and not set(data.objective) & set(t_objective):
+            return False
+        if data.platform and not set(data.platform) & set(t_platform):
+            return False
+
+        # minimum performance tier
+        return not (min_rank >= 0 and _tier_rank(t.performance_tier) < min_rank)
+
+    matched = [t for t in raw if _matches(t)]
+    # Sort: top tier first, then highest usage_count
+    matched.sort(key=lambda t: (_tier_rank(t.performance_tier), t.usage_count or 0), reverse=True)
+    matched = matched[: data.limit]
+
+    results = [
+        SearchLibraryResult(
+            template_id=str(t.id),
+            name=t.name,
+            description=getattr(t, "description", "") or "",
+            performance_tier=t.performance_tier,
+            avg_ctr=t.avg_ctr,
+            usage_count=t.usage_count or 0,
+            industry=t.industry or [],
+            format=t.format or [],
+            objective=t.objective or [],
+            platform=t.platform or [],
+            prompt_preview=t.prompt_template[:300],
+        )
+        for t in matched
+    ]
+
+    next_action = "prepare_video_blueprint" if results else "promote_to_library"
+    return SearchLibraryResponse(
+        status="ok",
+        total=len(results),
+        results=results,
+        next_action=next_action,
+    )

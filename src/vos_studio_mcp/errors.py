@@ -18,10 +18,12 @@ class ErrorCode(StrEnum):
     PROVIDER_ERROR = "provider_error"
     PROVIDER_AUTH_ERROR = "provider_auth_error"
     PROVIDER_TIMEOUT = "provider_timeout"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"  # circuit breaker open
 
     # Security
     RLS_DENIED = "rls_denied"
     AUTH_REQUIRED = "auth_required"
+    RATE_LIMITED = "rate_limited"
 
 
 class VosError(Exception):

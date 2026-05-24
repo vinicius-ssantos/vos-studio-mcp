@@ -7,8 +7,13 @@ from typing import Any
 from celery.exceptions import MaxRetriesExceededError
 
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
-from vos_studio_mcp.services.database import get_asset_with_client, get_session
+from vos_studio_mcp.services.database import (
+    get_asset_notification_context,
+    get_asset_with_client,
+    get_session,
+)
 from vos_studio_mcp.services.providers import get_adapter
+from vos_studio_mcp.services.webhook_notifier import notify_job_failed
 from vos_studio_mcp.tasks.celery_app import celery_app
 from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
 
@@ -81,6 +86,7 @@ async def _check_and_update(asset_id: str) -> str:
                 result=AuditResult.SUCCESS,
             )
         else:
+            provider_job_id = asset.provider_job_id
             asset.generation_status = "failed"
             await session.commit()
             await emit_audit_event(
@@ -95,12 +101,23 @@ async def _check_and_update(asset_id: str) -> str:
                 "generation.failed",
                 extra={
                     "asset_id": asset_id,
-                    "job_id": asset.provider_job_id,
+                    "job_id": provider_job_id,
                     "provider": "higgsfield",
                     "error_code": "provider_error",
                     "error": job_status.error,
                 },
             )
+            # Notify the client's webhook (best-effort)
+            sprint_id, client_id, webhook_url = await get_asset_notification_context(asset_id)
+            if webhook_url and sprint_id and client_id:
+                await notify_job_failed(
+                    asset_id=asset_id,
+                    sprint_id=sprint_id,
+                    client_id=client_id,
+                    webhook_url=webhook_url,
+                    provider_job_id=provider_job_id,
+                    event="asset.failed",
+                )
 
     return "done"
 

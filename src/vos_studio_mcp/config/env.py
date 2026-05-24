@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     )
 
     # Celery + Redis (ADR-0021)
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     celery_broker_url: str = Field(default="redis://localhost:6379/0", alias="CELERY_BROKER_URL")
     celery_result_backend: str = Field(
         default="redis://localhost:6379/1", alias="CELERY_RESULT_BACKEND"
@@ -63,6 +64,12 @@ class Settings(BaseSettings):
     webhook_secret_higgsfield: str = Field(default="", alias="WEBHOOK_SECRET_HIGGSFIELD")
     webhook_secret_freepik: str = Field(default="", alias="WEBHOOK_SECRET_FREEPIK")
     webhook_secret_magnific: str = Field(default="", alias="WEBHOOK_SECRET_MAGNIFIC")
+
+    # Outbound webhook signing secret (Issue #33)
+    outbound_webhook_secret: str = Field(default="", alias="OUTBOUND_WEBHOOK_SECRET")
+
+    # Rate limiting
+    rate_limit_enabled: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
 
     # Observability (ADR-0030)
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")

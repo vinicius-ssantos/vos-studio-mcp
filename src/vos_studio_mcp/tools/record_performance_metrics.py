@@ -9,10 +9,12 @@ from vos_studio_mcp.schemas.performance_record import (
 from vos_studio_mcp.services.performance_record_service import (
     create_performance_record as _create_performance_record,
 )
+from vos_studio_mcp.tools._instrumentation import instrument
 
 
 def register_record_performance_metrics_tools(mcp: FastMCP) -> None:
     @mcp.tool()
+    @instrument
     async def record_performance_metrics(data: PerformanceRecordInput) -> PerformanceRecordResponse:
         """Record structured campaign performance metrics for a delivered asset.
 
