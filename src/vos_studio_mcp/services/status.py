@@ -92,6 +92,8 @@ async def _check_celery_worker() -> ComponentStatus:
 
 async def get_health() -> HealthResponse:
     """Run all component checks concurrently and aggregate results."""
+    from vos_studio_mcp.services.circuit_breaker import get_all_breakers
+
     settings = get_settings()
 
     db_status, redis_status, worker_status = await asyncio.gather(
@@ -100,11 +102,20 @@ async def get_health() -> HealthResponse:
         _check_celery_worker(),
     )
 
-    components = {
+    components: dict[str, ComponentStatus] = {
         "database": db_status,
         "redis": redis_status,
         "celery_worker": worker_status,
     }
+
+    # Expose each circuit breaker state so operators can see degraded providers.
+    for name, breaker in get_all_breakers().items():
+        state = breaker.state
+        cb_status = "ok" if state == "closed" else "degraded" if state == "half_open" else "down"
+        components[f"circuit_breaker.{name}"] = ComponentStatus(
+            status=cb_status,
+            detail=f"state={state} failures={breaker.failure_count}",
+        )
 
     # Overall status: "down" if any critical component fails, "degraded" if worker is down
     if db_status.status == "down" or redis_status.status == "down":

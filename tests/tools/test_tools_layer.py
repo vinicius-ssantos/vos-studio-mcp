@@ -65,6 +65,7 @@ _EXPECTED_TOOLS = {
     "promote_to_library",
     "prepare_video_blueprint",
     "record_performance_metrics",
+    "list_video_jobs",
 }
 
 

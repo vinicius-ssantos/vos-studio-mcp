@@ -9,6 +9,7 @@ import httpx
 
 from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.errors import ErrorCode, VosError
+from vos_studio_mcp.services.circuit_breaker import get_breaker
 from vos_studio_mcp.services.providers.base import (
     CostEstimate,
     GenerationParams,
@@ -92,8 +93,11 @@ class HiggsFieldAdapter:
             extra={"sprint_id": params.sprint_id, "prompt_version": params.prompt_version},
         )
 
+        breaker = get_breaker("higgsfield")
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(endpoint, headers=self._headers(), json=payload)
+            response = await breaker.execute(
+                client.post(endpoint, headers=self._headers(), json=payload)
+            )
 
         if response.status_code == 402:
             raise VosError(ErrorCode.BUDGET_EXCEEDED, "Higgsfield API: insufficient credits")
@@ -118,9 +122,12 @@ class HiggsFieldAdapter:
         if not get_settings().higgsfield_api_key:
             raise VosError(ErrorCode.PROVIDER_ERROR, "HIGGSFIELD_API_KEY is not configured")
 
+        breaker = get_breaker("higgsfield")
         status_url = f"{_BASE_URL}/v1/video/status/{job_id}"
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(status_url, headers=self._headers())
+            response = await breaker.execute(
+                client.get(status_url, headers=self._headers())
+            )
 
         if not response.is_success:
             raise VosError(

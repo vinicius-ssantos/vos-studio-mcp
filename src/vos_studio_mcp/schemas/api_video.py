@@ -37,3 +37,30 @@ class VideoJobStatusResponse(BaseModel):
     provider_job_id: str | None
     summary: str
     next_action: str
+
+
+class VideoJobSummary(BaseModel):
+    """Per-job entry in ListVideoJobsResponse."""
+
+    asset_id: str
+    provider_job_id: str | None
+    generation_status: str
+    storage_status: str
+    storage_url: str | None
+    error_code: str | None = None
+
+
+class JobCounts(BaseModel):
+    total: int
+    completed: int
+    processing: int
+    pending: int
+    failed: int
+
+
+class ListVideoJobsResponse(BaseModel):
+    status: str
+    sprint_id: str
+    jobs: list[VideoJobSummary]
+    summary: JobCounts
+    next_action: str
