@@ -9,6 +9,9 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import InternalError as SAInternalError
+
+from vos_studio_mcp.errors import ErrorCode, VosError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,6 +39,12 @@ def _row(value: str) -> tuple:
 # ---------------------------------------------------------------------------
 
 
+def _rls_internal_error() -> SAInternalError:
+    """Build a SQLAlchemy InternalError that mimics a PostgreSQL RLS violation."""
+    orig = Exception("new row violates row-level security policy for table \"sprints\"")
+    return SAInternalError("", {}, orig)
+
+
 @pytest.mark.asyncio
 async def test_get_session_yields_session_from_factory() -> None:
     from vos_studio_mcp.services.database import get_session
@@ -45,9 +54,45 @@ async def test_get_session_yields_session_from_factory() -> None:
     mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):
+    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):  # noqa: SIM117
         async with get_session() as session:
             assert session is mock_session
+
+
+@pytest.mark.asyncio
+async def test_get_session_maps_rls_violation_to_vos_error() -> None:
+    """An InternalError whose orig contains 'row-level security' must be
+    re-raised as VosError(RLS_DENIED) so callers get a clean typed error."""
+    from vos_studio_mcp.services.database import get_session
+
+    mock_session = AsyncMock()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):  # noqa: SIM117
+        with pytest.raises(VosError) as exc_info:
+            async with get_session():
+                raise _rls_internal_error()
+
+    assert exc_info.value.error_code == ErrorCode.RLS_DENIED
+
+
+@pytest.mark.asyncio
+async def test_get_session_reraises_non_rls_internal_error() -> None:
+    """InternalError unrelated to RLS must propagate unchanged."""
+    from vos_studio_mcp.services.database import get_session
+
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    other_error = SAInternalError("", {}, Exception("deadlock detected"))
+
+    with patch("vos_studio_mcp.services.database._session_factory", return_value=mock_ctx):  # noqa: SIM117
+        with pytest.raises(SAInternalError):
+            async with get_session():
+                raise other_error
 
 
 # ---------------------------------------------------------------------------
