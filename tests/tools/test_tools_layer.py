@@ -66,6 +66,7 @@ _EXPECTED_TOOLS = {
     "prepare_video_blueprint",
     "record_performance_metrics",
     "list_video_jobs",
+    "search_library",
 }
 
 

@@ -13,6 +13,7 @@ from vos_studio_mcp.tools.list_video_jobs import register_list_video_jobs_tools
 from vos_studio_mcp.tools.prepare_dashboard_pack import register_prepare_dashboard_pack_tools
 from vos_studio_mcp.tools.prepare_video_blueprint import register_prepare_video_blueprint_tools
 from vos_studio_mcp.tools.promote_to_library import register_promote_to_library_tools
+from vos_studio_mcp.tools.search_library import register_search_library_tools
 from vos_studio_mcp.tools.record_asset_performance import register_record_asset_performance_tools
 from vos_studio_mcp.tools.record_performance_metrics import (
     register_record_performance_metrics_tools,
@@ -40,5 +41,6 @@ def register_tools(mcp: FastMCP) -> None:
     register_list_video_jobs_tools(mcp)
     register_conclude_variant_test_tools(mcp)
     register_promote_to_library_tools(mcp)
+    register_search_library_tools(mcp)
     register_prepare_video_blueprint_tools(mcp)
     register_record_performance_metrics_tools(mcp)
