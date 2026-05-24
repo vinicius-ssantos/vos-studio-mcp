@@ -30,6 +30,7 @@ class Client(Base):
     contact_name: Mapped[str | None] = mapped_column(String(200))
     contact_email: Mapped[str | None] = mapped_column(String(254))
     notes: Mapped[str | None] = mapped_column(Text)
+    webhook_url: Mapped[str | None] = mapped_column(String(2048))  # outbound job notifications
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

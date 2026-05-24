@@ -10,6 +10,8 @@ _TASK_MODULE = "vos_studio_mcp.tasks.poll_video"
 _GET_SESSION = f"{_TASK_MODULE}.get_session"
 _GET_ADAPTER = f"{_TASK_MODULE}.get_adapter"
 _GET_ASSET = f"{_TASK_MODULE}.get_asset_with_client"
+_GET_NOTIFY_CTX = f"{_TASK_MODULE}.get_asset_notification_context"
+_NOTIFY_FAILED = f"{_TASK_MODULE}.notify_job_failed"
 _UPLOAD_TASK = "vos_studio_mcp.tasks.upload_video.upload_video_to_storage"
 
 
@@ -120,6 +122,7 @@ async def test_check_marks_failed_on_job_failure() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(asset)),
         patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
         patch(_GET_ADAPTER, return_value=adapter),
+        patch(_GET_NOTIFY_CTX, new_callable=AsyncMock, return_value=(None, None, None)),
     ):
         from vos_studio_mcp.tasks.poll_video import _check_and_update
         result = await _check_and_update("asset-001")

@@ -80,6 +80,32 @@ async def set_tenant_context_from_sprint(session: AsyncSession, sprint_id: str) 
     return client_id
 
 
+async def get_asset_notification_context(
+    asset_id: str,
+) -> tuple[str | None, str | None, str | None]:
+    """Return (sprint_id, client_id, webhook_url) for *asset_id*.
+
+    Bypasses RLS to retrieve the client's webhook_url.
+    Returns (None, None, None) if the asset is not found.
+    """
+    async with get_session() as session:
+        await bypass_rls(session)
+        result = await session.execute(
+            text(
+                "SELECT a.sprint_id, s.client_id, c.webhook_url "
+                "FROM assets a "
+                "JOIN sprints s ON a.sprint_id = s.id "
+                "JOIN clients c ON s.client_id = c.id "
+                "WHERE a.id = :asset_id LIMIT 1"
+            ),
+            {"asset_id": asset_id},
+        )
+        row = result.first()
+        if row is None:
+            return None, None, None
+        return str(row[0]), str(row[1]), row[2]
+
+
 async def bypass_rls(session: AsyncSession) -> None:
     """Disable row-level security for the current transaction.
 

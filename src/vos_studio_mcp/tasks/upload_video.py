@@ -6,7 +6,12 @@ from typing import Any
 
 from vos_studio_mcp.services import storage
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
-from vos_studio_mcp.services.database import get_asset_with_client, get_session
+from vos_studio_mcp.services.database import (
+    get_asset_notification_context,
+    get_asset_with_client,
+    get_session,
+)
+from vos_studio_mcp.services.webhook_notifier import notify_job_completed, notify_job_failed
 from vos_studio_mcp.tasks.celery_app import celery_app
 
 log = logging.getLogger(__name__)
@@ -38,6 +43,7 @@ def upload_video_to_storage(self: Any, asset_id: str, media_url: str) -> None:
             result=AuditResult.SUCCESS,
         ))
         log.info("upload_video_to_storage.done", extra={"asset_id": asset_id})
+        _notify_completed(asset_id, public_url)
 
     except Exception as exc:
         log.error(
@@ -55,6 +61,7 @@ def upload_video_to_storage(self: Any, asset_id: str, media_url: str) -> None:
                 result=AuditResult.FAILED,
                 failure_reason=str(exc),
             ))
+            _notify_upload_failed(asset_id)
 
 
 async def _get_client_id(asset_id: str) -> str | None:
@@ -78,3 +85,38 @@ async def _mark_upload_failed(asset_id: str) -> None:
         if asset is not None:
             asset.storage_status = "failed"
             await session.commit()
+
+
+def _notify_completed(asset_id: str, storage_url: str) -> None:
+    """Fire-and-forget: notify the client's webhook that the asset is ready."""
+    async def _run() -> None:
+        sprint_id, client_id, webhook_url = await get_asset_notification_context(asset_id)
+        if webhook_url and sprint_id and client_id:
+            await notify_job_completed(
+                asset_id=asset_id,
+                sprint_id=sprint_id,
+                client_id=client_id,
+                webhook_url=webhook_url,
+                storage_url=storage_url,
+                provider_job_id=None,  # not available here; kept in DB
+                storage_status="stored",
+            )
+
+    asyncio.run(_run())
+
+
+def _notify_upload_failed(asset_id: str) -> None:
+    """Fire-and-forget: notify the client's webhook that the upload failed."""
+    async def _run() -> None:
+        sprint_id, client_id, webhook_url = await get_asset_notification_context(asset_id)
+        if webhook_url and sprint_id and client_id:
+            await notify_job_failed(
+                asset_id=asset_id,
+                sprint_id=sprint_id,
+                client_id=client_id,
+                webhook_url=webhook_url,
+                provider_job_id=None,
+                event="asset.upload_failed",
+            )
+
+    asyncio.run(_run())

@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     webhook_secret_freepik: str = Field(default="", alias="WEBHOOK_SECRET_FREEPIK")
     webhook_secret_magnific: str = Field(default="", alias="WEBHOOK_SECRET_MAGNIFIC")
 
+    # Outbound webhook signing secret (Issue #33)
+    outbound_webhook_secret: str = Field(default="", alias="OUTBOUND_WEBHOOK_SECRET")
+
     # Observability (ADR-0030)
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
     sentry_environment: str = Field(default="development", alias="SENTRY_ENVIRONMENT")
