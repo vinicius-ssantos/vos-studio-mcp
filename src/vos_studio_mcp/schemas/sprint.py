@@ -56,6 +56,15 @@ class SprintInput(BaseModel):
         default_factory=list,
         description="Platform tags for prompt library suggestions (e.g. meta, tiktok).",
     )
+    idempotency_key: str | None = Field(
+        default=None,
+        max_length=128,
+        description=(
+            "Optional client-generated key to prevent duplicate sprint creation on retries. "
+            "If a sprint with this key already exists for the client, the existing sprint is "
+            "returned without creating a new one."
+        ),
+    )
 
 
 class BudgetStatus(BaseModel):
@@ -82,6 +91,7 @@ class SprintResponse(BaseModel):
     variant_groups_created: int = 0
     library_suggestions: list[LibrarySuggestion] = Field(default_factory=list)
     performance_context: PerformanceContext | None = None
+    idempotency_key: str | None = None  # echoed back when supplied
 
 
 class SprintStatusResponse(BaseModel):

@@ -34,10 +34,56 @@ def _str_list(memory: dict[str, object], key: str) -> list[str]:
     return []
 
 
+async def _find_idempotent_sprint(
+    session: object, client_id: str, idempotency_key: str
+) -> Sprint | None:
+    """Return an existing sprint with the given idempotency key, or None."""
+    result = await (session).execute(  # type: ignore[attr-defined]
+        select(Sprint).where(
+            Sprint.client_id == uuid.UUID(client_id),
+            Sprint.idempotency_key == idempotency_key,
+        )
+    )
+    found: Sprint | None = result.scalars().first()
+    return found
+
+
 async def create_creative_sprint(data: SprintInput) -> SprintResponse:
     assert_owns_client(data.client_id)
     async with get_session() as session:
         await set_tenant_context(session, data.client_id)
+
+        # Idempotency: if a sprint with this key already exists, return it.
+        if data.idempotency_key is not None:
+            existing = await _find_idempotent_sprint(session, data.client_id, data.idempotency_key)
+            if existing is not None:
+                log.info(
+                    "sprint.idempotent_replay",
+                    extra={
+                        "sprint_id": str(existing.id),
+                        "idempotency_key": data.idempotency_key,
+                    },
+                )
+                alert = (
+                    existing.spent_usd >= existing.max_spend_usd * existing.alert_threshold_pct
+                )
+                return SprintResponse(
+                    status="created",
+                    sprint_id=str(existing.id),
+                    summary=(
+                        f"Idempotent replay: returning existing sprint for "
+                        f"'{existing.product_name}'."
+                    ),
+                    budget_status=BudgetStatus(
+                        approved_usd=existing.max_spend_usd,
+                        spent_usd=existing.spent_usd,
+                        remaining_usd=existing.max_spend_usd - existing.spent_usd,
+                        alert=alert,
+                    ),
+                    next_action="prepare_dashboard_pack",
+                    idempotency_key=data.idempotency_key,
+                )
+
         sprint = Sprint(
             client_id=uuid.UUID(data.client_id),
             brand_kit_id=uuid.UUID(data.brand_kit_id),
@@ -52,6 +98,7 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
             alert_threshold_pct=data.budget.alert_threshold_pct,
             spent_usd=0.0,
             sprint_status="open",
+            idempotency_key=data.idempotency_key,
         )
         session.add(sprint)
         await session.flush()  # get sprint.id before adding children
@@ -155,6 +202,7 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
             for s in library_suggestions
         ],
         performance_context=performance_context,
+        idempotency_key=data.idempotency_key,
     )
 
 
