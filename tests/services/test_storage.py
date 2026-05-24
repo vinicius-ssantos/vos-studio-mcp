@@ -22,8 +22,8 @@ _CLIENT_ID = "cccccccc-0000-0000-0000-000000000003"
 def _mock_settings() -> MagicMock:
     s = MagicMock()
     s.storage_endpoint = "https://r2.example.com"
-    s.storage_access_key = "access-key"
-    s.storage_secret_key = "secret-key"
+    s.storage_access_key = "ak"
+    s.storage_secret_key = "sk"
     s.storage_bucket = "vos-assets"
     s.storage_public_base_url = "https://pub.example.com"
     return s
