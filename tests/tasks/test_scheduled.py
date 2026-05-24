@@ -250,3 +250,117 @@ def test_beat_timezone_is_utc() -> None:
     from vos_studio_mcp.tasks.celery_app import celery_app
 
     assert celery_app.conf.timezone == "UTC"
+
+
+# ---------------------------------------------------------------------------
+# Retry / error paths — task-level (lines 52-56, 166-170)
+# ---------------------------------------------------------------------------
+
+
+def test_rollup_performance_memory_retries_on_exception() -> None:
+    """When _do_rollup raises, the task must call self.retry with countdown=300."""
+    from celery.exceptions import Retry
+
+    from vos_studio_mcp.tasks.scheduled import rollup_performance_memory
+
+    with (
+        patch(
+            "vos_studio_mcp.tasks.scheduled._do_rollup",
+            side_effect=RuntimeError("db gone"),
+        ),
+        patch.object(rollup_performance_memory, "retry", side_effect=Retry()),
+        pytest.raises(Retry),
+    ):  # noqa: SIM117
+        rollup_performance_memory.run()
+
+
+def test_rollup_performance_memory_retry_max_exceeded() -> None:
+    """When retries are exhausted MaxRetriesExceededError propagates."""
+    from celery.exceptions import MaxRetriesExceededError
+
+    from vos_studio_mcp.tasks.scheduled import rollup_performance_memory
+
+    with (
+        patch(
+            "vos_studio_mcp.tasks.scheduled._do_rollup",
+            side_effect=RuntimeError("persistent failure"),
+        ),
+        patch.object(
+            rollup_performance_memory, "retry", side_effect=MaxRetriesExceededError()
+        ),
+        pytest.raises(MaxRetriesExceededError),
+    ):  # noqa: SIM117
+        rollup_performance_memory.run()
+
+
+def test_cleanup_stale_jobs_retries_on_exception() -> None:
+    """When _do_cleanup raises, the task must call self.retry with countdown=600."""
+    from celery.exceptions import Retry
+
+    from vos_studio_mcp.tasks.scheduled import cleanup_stale_jobs
+
+    with (
+        patch(
+            "vos_studio_mcp.tasks.scheduled._do_cleanup",
+            side_effect=RuntimeError("db gone"),
+        ),
+        patch.object(cleanup_stale_jobs, "retry", side_effect=Retry()),
+        pytest.raises(Retry),
+    ):  # noqa: SIM117
+        cleanup_stale_jobs.run()
+
+
+def test_cleanup_stale_jobs_retry_max_exceeded() -> None:
+    """When retries are exhausted MaxRetriesExceededError propagates."""
+    from celery.exceptions import MaxRetriesExceededError
+
+    from vos_studio_mcp.tasks.scheduled import cleanup_stale_jobs
+
+    with (
+        patch(
+            "vos_studio_mcp.tasks.scheduled._do_cleanup",
+            side_effect=RuntimeError("persistent failure"),
+        ),
+        patch.object(
+            cleanup_stale_jobs, "retry", side_effect=MaxRetriesExceededError()
+        ),
+        pytest.raises(MaxRetriesExceededError),
+    ):  # noqa: SIM117
+        cleanup_stale_jobs.run()
+
+
+# ---------------------------------------------------------------------------
+# Per-brand-kit exception handler (lines 81-86)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_do_rollup_skips_brand_kit_on_exception() -> None:
+    """When _rollup_brand_kit raises for one brand kit, it is counted as skipped."""
+    import uuid as uuid_mod
+
+    bk_id = uuid_mod.uuid4()
+    bk_rows = [(bk_id,)]
+
+    first_result = MagicMock()
+    first_result.all = MagicMock(return_value=bk_rows)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=first_result)
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_SESSION_PATCH, return_value=ctx),
+        patch(_BYPASS_PATCH),
+        patch(
+            "vos_studio_mcp.tasks.scheduled._rollup_brand_kit",
+            side_effect=RuntimeError("transient db error"),
+        ),
+    ):
+        from vos_studio_mcp.tasks.scheduled import _do_rollup
+
+        result = await _do_rollup()
+
+    assert result == {"updated": 0, "skipped": 1}
