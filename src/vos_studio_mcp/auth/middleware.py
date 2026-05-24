@@ -12,7 +12,7 @@ from vos_studio_mcp.config.env import get_settings
 
 log = logging.getLogger(__name__)
 
-_OPEN_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+_OPEN_PATHS = {"/health", "/metrics", "/docs", "/openapi.json", "/redoc"}
 _OPEN_PREFIXES = ("/webhooks/",)
 
 
