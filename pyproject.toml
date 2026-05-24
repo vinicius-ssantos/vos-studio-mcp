@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.6.0",
     "flower>=2.0.0",
     "respx>=0.21.0",
+    "python-semantic-release>=9.0.0",
 ]
 
 [build-system]
@@ -72,4 +73,35 @@ markers = [
 [tool.coverage.run]
 source = ["src/vos_studio_mcp"]
 omit = ["tests/*"]
+
+# ---------------------------------------------------------------------------
+# python-semantic-release
+# ---------------------------------------------------------------------------
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+version_variables = ["src/vos_studio_mcp/__init__.py:__version__"]
+branch = "main"
+changelog_file = "CHANGELOG.md"
+build_command = "echo 'no build step'"
+tag_format = "v{version}"
+
+[tool.semantic_release.commit_parser_options]
+# Conventional Commits → bump rules
+# feat → minor  |  fix/perf → patch  |  BREAKING CHANGE → major
+allowed_tags = ["feat", "fix", "perf", "refactor", "chore", "docs", "style", "test", "ci", "build", "revert"]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+
+[tool.semantic_release.changelog]
+template_dir = ""        # use built-in template
+exclude_commit_patterns = [
+    "^chore",
+    "^ci",
+    "^style",
+    "^test",
+    "^docs",
+]
+
+[tool.semantic_release.remote]
+type = "github"
 
