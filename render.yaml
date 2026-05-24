@@ -1,0 +1,130 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Web service — FastAPI / FastMCP
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: vos-studio-mcp
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OAUTH_ISSUER_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: DEV_BEARER_TOKEN
+        sync: false
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: vos-studio-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: vos-studio-redis
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: vos-studio-redis
+          property: connectionString
+      - key: STORAGE_PROVIDER
+        value: r2
+      - key: STORAGE_ENDPOINT
+        sync: false
+      - key: STORAGE_BUCKET
+        sync: false
+      - key: STORAGE_ACCESS_KEY
+        sync: false
+      - key: STORAGE_SECRET_KEY
+        sync: false
+      - key: STORAGE_PUBLIC_BASE_URL
+        sync: false
+      - key: HIGGSFIELD_API_KEY
+        sync: false
+      - key: FREEPIK_API_KEY
+        sync: false
+      - key: MAGNIFIC_API_KEY
+        sync: false
+      - key: WEBHOOK_SECRET_HIGGSFIELD
+        sync: false
+      - key: WEBHOOK_SECRET_FREEPIK
+        sync: false
+      - key: WEBHOOK_SECRET_MAGNIFIC
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: info
+
+  # ---------------------------------------------------------------------------
+  # Worker — Celery
+  # ---------------------------------------------------------------------------
+  - type: worker
+    name: vos-studio-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: celery -A vos_studio_mcp.tasks.celery_app:celery_app worker --loglevel=info --concurrency=4
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: vos-studio-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: vos-studio-redis
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: vos-studio-redis
+          property: connectionString
+      - key: STORAGE_PROVIDER
+        value: r2
+      - key: STORAGE_ENDPOINT
+        sync: false
+      - key: STORAGE_BUCKET
+        sync: false
+      - key: STORAGE_ACCESS_KEY
+        sync: false
+      - key: STORAGE_SECRET_KEY
+        sync: false
+      - key: STORAGE_PUBLIC_BASE_URL
+        sync: false
+      - key: HIGGSFIELD_API_KEY
+        sync: false
+      - key: FREEPIK_API_KEY
+        sync: false
+      - key: MAGNIFIC_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: info
+
+  # ---------------------------------------------------------------------------
+  # Redis
+  # ---------------------------------------------------------------------------
+  - type: redis
+    name: vos-studio-redis
+    ipAllowList: []
+    plan: free
