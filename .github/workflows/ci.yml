@@ -104,7 +104,7 @@ jobs:
         run: uv run pytest --cov=src/vos_studio_mcp --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-xml
