@@ -34,7 +34,7 @@ def instrument[**P, R](fn: _AsyncFn[P, R]) -> _AsyncFn[P, R]:
             _record(tool_name, success=False)
             raise
 
-    return _wrapper  # type: ignore[return-value]
+    return _wrapper
 
 
 def _record(tool_name: str, *, success: bool) -> None:

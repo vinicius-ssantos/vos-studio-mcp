@@ -66,7 +66,7 @@ class TestListVideoJobs:
         ]
         ctx = _session_ctx(assets=assets)
 
-        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):
+        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):  # noqa: SIM117
             resp = await list_video_jobs(_SPRINT_ID, _CLIENT_ID)
 
         assert resp.status == "ok"
@@ -83,7 +83,7 @@ class TestListVideoJobs:
         assets = [_mock_asset("processing", "not_required", None)]
         ctx = _session_ctx(assets=assets)
 
-        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):
+        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):  # noqa: SIM117
             resp = await list_video_jobs(_SPRINT_ID, _CLIENT_ID)
 
         assert resp.next_action == "poll_again"
@@ -93,7 +93,7 @@ class TestListVideoJobs:
         assets = [_mock_asset("completed"), _mock_asset("completed")]
         ctx = _session_ctx(assets=assets)
 
-        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):
+        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):  # noqa: SIM117
             resp = await list_video_jobs(_SPRINT_ID, _CLIENT_ID)
 
         assert resp.next_action == "prepare_dashboard_pack"
@@ -102,7 +102,7 @@ class TestListVideoJobs:
     async def test_next_action_request_api_video_when_empty(self) -> None:
         ctx = _session_ctx(assets=[])
 
-        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):
+        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):  # noqa: SIM117
             resp = await list_video_jobs(_SPRINT_ID, _CLIENT_ID)
 
         assert resp.next_action == "request_api_video"
@@ -112,7 +112,7 @@ class TestListVideoJobs:
     async def test_raises_not_found_when_sprint_missing(self) -> None:
         ctx = _session_ctx(sprint=None)
 
-        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):
+        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):  # noqa: SIM117
             with pytest.raises(VosError) as exc_info:
                 await list_video_jobs(_SPRINT_ID, _CLIENT_ID)
 
@@ -123,7 +123,7 @@ class TestListVideoJobs:
         sprint = _mock_sprint(client_id="other-client-id")
         ctx = _session_ctx(sprint=sprint)
 
-        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):
+        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):  # noqa: SIM117
             with pytest.raises(VosError) as exc_info:
                 await list_video_jobs(_SPRINT_ID, _CLIENT_ID)
 
@@ -134,7 +134,7 @@ class TestListVideoJobs:
         asset = _mock_asset("completed", "stored", "https://r2.example.com/vid.mp4")
         ctx = _session_ctx(assets=[asset])
 
-        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):
+        with patch(_GUARD), patch(_GET_SESSION, return_value=ctx), patch(_SET_TENANT):  # noqa: SIM117
             resp = await list_video_jobs(_SPRINT_ID, _CLIENT_ID)
 
         job = resp.jobs[0]

@@ -20,9 +20,9 @@ from vos_studio_mcp.schemas.sprint import (
 )
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session, set_tenant_context
-from vos_studio_mcp.services.rate_limiter import check_rate_limit
 from vos_studio_mcp.services.performance_record_service import get_top_performers
 from vos_studio_mcp.services.prompt_library_service import get_library_suggestions
+from vos_studio_mcp.services.rate_limiter import check_rate_limit
 
 log = logging.getLogger(__name__)
 
