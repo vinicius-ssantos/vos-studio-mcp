@@ -67,6 +67,7 @@ _EXPECTED_TOOLS = {
     "record_performance_metrics",
     "list_video_jobs",
     "search_library",
+    "set_client_webhook",
 }
 
 
