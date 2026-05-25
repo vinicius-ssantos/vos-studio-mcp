@@ -55,6 +55,7 @@ _EXPECTED_TOOLS = {
     "create_creative_sprint",
     "get_sprint_status",
     "prepare_dashboard_pack",
+    "list_provider_capabilities",
     "list_sprint_assets",
     "register_manual_asset",
     "close_sprint",
