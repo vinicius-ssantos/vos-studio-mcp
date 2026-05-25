@@ -2,11 +2,11 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, MetaData, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from typing import Any
 
 convention = {
     "ix": "ix_%(column_0_label)s",
@@ -237,6 +237,33 @@ class AuditLog(Base):
     result: Mapped[str] = mapped_column(String(20), nullable=False)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
+class ProviderUsageEvent(Base):
+    """Per-provider cost ledger for global daily quota enforcement (ADR-0034)."""
+
+    __tablename__ = "provider_usage_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    sprint_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sprints.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("clients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    estimated_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    actual_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 

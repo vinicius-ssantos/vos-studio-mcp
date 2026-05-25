@@ -13,6 +13,7 @@ class ErrorCode(StrEnum):
     SPRINT_CLOSED = "sprint_closed"
     BUDGET_EXCEEDED = "budget_exceeded"
     BUDGET_REJECTED = "budget_rejected"
+    QUOTA_EXCEEDED = "quota_exceeded"
 
     # Provider / external
     PROVIDER_ERROR = "provider_error"

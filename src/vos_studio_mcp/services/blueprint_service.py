@@ -7,6 +7,7 @@ import logging
 import uuid
 
 from db.models import BrandKit, Sprint
+from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.blueprint import (
     ProviderExecutionPack,
@@ -101,6 +102,8 @@ async def prepare_video_blueprint(data: VideoBlueprintInput) -> VideoBlueprintRe
         if sprint is None:
             raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
 
+        # Verify the authenticated caller owns the sprint's client (ADR-0019, Issue #46).
+        assert_owns_client(str(sprint.client_id))
         await set_tenant_context(session, str(sprint.client_id))
         brand_kit: BrandKit | None = await session.get(BrandKit, sprint.brand_kit_id)
 
