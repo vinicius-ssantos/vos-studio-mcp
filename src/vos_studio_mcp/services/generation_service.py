@@ -17,6 +17,7 @@ from vos_studio_mcp.schemas.api_video import (
     VideoJobSummary,
 )
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
+from vos_studio_mcp.services.budget_guard import check_provider_budget
 from vos_studio_mcp.services.database import get_asset_with_client, get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
 from vos_studio_mcp.services.providers.base import BudgetLimit, GenerationParams
@@ -84,6 +85,16 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
             max_spend_usd=sprint.max_spend_usd,
             max_videos=sprint.max_videos,
         )
+
+    # Check and record the global provider daily quota (outside session to avoid
+    # holding the DB connection while performing an additional async query).
+    await check_provider_budget("higgsfield", data.client_id, data.sprint_id, estimate.estimated_usd)
+
+    async with get_session() as session:
+        await set_tenant_context(session, data.client_id)
+        sprint = await session.get(Sprint, uuid.UUID(data.sprint_id))
+        if sprint is None:  # pragma: no cover — already checked above
+            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
 
         log.info(
             "generation.requested",

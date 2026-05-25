@@ -6,15 +6,24 @@ import uuid
 from sqlalchemy import select
 
 from db.models import Asset
+from vos_studio_mcp.auth.guards import assert_owns_client
+from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.asset import AssetInput, AssetListItem, AssetListResponse, AssetResponse
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
-from vos_studio_mcp.services.database import get_session
+from vos_studio_mcp.services.database import get_session, set_tenant_context_from_sprint
 
 log = logging.getLogger(__name__)
 
 
 async def register_manual_asset(data: AssetInput) -> AssetResponse:
     async with get_session() as session:
+        # Resolve sprint ownership, set RLS tenant context, and assert caller owns the sprint.
+        try:
+            client_id = await set_tenant_context_from_sprint(session, data.sprint_id)
+        except LookupError as exc:
+            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found") from exc
+        assert_owns_client(client_id)
+
         asset = Asset(
             sprint_id=uuid.UUID(data.sprint_id),
             provider=data.provider,
@@ -55,6 +64,13 @@ async def register_manual_asset(data: AssetInput) -> AssetResponse:
 async def list_sprint_assets(sprint_id: str) -> AssetListResponse:
     sprint_uuid = uuid.UUID(sprint_id)
     async with get_session() as session:
+        # Resolve sprint ownership, set RLS tenant context, and assert caller owns the sprint.
+        try:
+            client_id = await set_tenant_context_from_sprint(session, sprint_id)
+        except LookupError as exc:
+            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {sprint_id} not found") from exc
+        assert_owns_client(client_id)
+
         result = await session.execute(
             select(Asset).where(Asset.sprint_id == sprint_uuid).order_by(Asset.created_at)
         )

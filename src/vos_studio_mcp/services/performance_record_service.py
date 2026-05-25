@@ -10,6 +10,7 @@ import uuid
 from sqlalchemy import select
 
 from db.models import Asset, PerformanceRecord, Sprint
+from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.performance_record import (
     PerformanceRecordInput,
@@ -42,6 +43,8 @@ async def create_performance_record(data: PerformanceRecordInput) -> Performance
         if sprint is None:
             raise VosError(ErrorCode.NOT_FOUND, f"Sprint not found for asset {data.asset_id}")
 
+        # Verify the authenticated caller owns the sprint's client (ADR-0019, Issue #46).
+        assert_owns_client(str(sprint.client_id))
         await set_tenant_context(session, str(sprint.client_id))
 
         record = PerformanceRecord(

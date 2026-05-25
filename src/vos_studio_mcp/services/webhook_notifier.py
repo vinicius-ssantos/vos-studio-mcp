@@ -37,6 +37,7 @@ import logging
 import httpx
 
 from vos_studio_mcp.config.env import get_settings
+from vos_studio_mcp.services.webhook_ssrf_guard import check_webhook_url
 
 log = logging.getLogger(__name__)
 
@@ -146,6 +147,12 @@ async def _deliver(
     storage_url: str | None,
     provider_job_id: str | None,
 ) -> None:
+    # SSRF guard — second checkpoint (first is at URL registration time).
+    # Raises VosError(INVALID_INPUT) for private/loopback/metadata targets.
+    # The public helpers (notify_job_completed / notify_job_failed) swallow
+    # this like any other delivery error, so a bad stored URL is best-effort.
+    await check_webhook_url(webhook_url)
+
     payload = _build_payload(
         event=event,
         asset_id=asset_id,

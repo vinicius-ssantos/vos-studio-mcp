@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from db.models import VariantGroup
+from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.variant import (
     ConcludeVariantTestInput,
@@ -30,7 +31,9 @@ async def conclude_variant_test(data: ConcludeVariantTestInput) -> ConcludeVaria
         if group is None:
             raise VosError(ErrorCode.NOT_FOUND, f"VariantGroup {data.group_id} not found")
 
-        await set_tenant_context_from_sprint(session, str(group.sprint_id))
+        client_id = await set_tenant_context_from_sprint(session, str(group.sprint_id))
+        # Verify the authenticated caller owns the sprint's client (ADR-0019, Issue #46).
+        assert_owns_client(client_id)
 
         if group.status != "running":
             raise VosError(

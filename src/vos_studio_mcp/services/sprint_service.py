@@ -214,6 +214,8 @@ async def get_sprint_status(sprint_id: str) -> SprintStatusResponse:
         sprint = await session.get(Sprint, sprint_uuid)
         if sprint is None:
             raise VosError(ErrorCode.NOT_FOUND, f"Sprint {sprint_id} not found")
+        # Verify the authenticated caller owns the sprint's client (ADR-0019, Issue #46).
+        assert_owns_client(str(sprint.client_id))
 
         asset_count_result = await session.execute(
             select(func.count()).where(Asset.sprint_id == sprint_uuid)
@@ -257,6 +259,8 @@ async def close_sprint(data: CloseSprintInput) -> CloseSprintResponse:
         sprint = await session.get(Sprint, sprint_uuid)
         if sprint is None:
             raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
+        # Verify the authenticated caller owns the sprint's client (ADR-0019, Issue #46).
+        assert_owns_client(str(sprint.client_id))
         if sprint.sprint_status == "closed":
             raise VosError(ErrorCode.INVALID_INPUT, f"Sprint {data.sprint_id} is already closed")
 

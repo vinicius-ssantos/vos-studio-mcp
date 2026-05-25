@@ -15,6 +15,7 @@ _GET_SESSION = "vos_studio_mcp.services.generation_service.get_session"
 _GET_ADAPTER = "vos_studio_mcp.services.generation_service.get_adapter"
 _SET_TENANT = "vos_studio_mcp.services.generation_service.set_tenant_context"
 _POLL_TASK = "vos_studio_mcp.services.generation_service.poll_video_job"
+_CHECK_BUDGET = "vos_studio_mcp.services.generation_service.check_provider_budget"
 
 
 def _input(**kwargs: Any) -> ApiVideoInput:
@@ -104,6 +105,7 @@ async def test_request_api_video_success() -> None:
         patch(_GET_ADAPTER, return_value=adapter),
         patch(_GET_SESSION, return_value=_session_ctx(sprint, asset)),
         patch(_SET_TENANT, new_callable=AsyncMock),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-001"),
         patch(_POLL_TASK),
     ):
         result = await request_api_video(_input())
@@ -126,6 +128,7 @@ async def test_request_api_video_updates_sprint_spent_usd() -> None:
         patch(_GET_ADAPTER, return_value=adapter),
         patch(_GET_SESSION, return_value=_session_ctx(sprint, _mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-001"),
         patch(_POLL_TASK),
     ):
         await request_api_video(_input())
@@ -232,6 +235,7 @@ async def test_max_videos_not_reached_succeeds() -> None:
         patch(_GET_ADAPTER, return_value=_mock_adapter()),
         patch(_GET_SESSION, return_value=_session_ctx(sprint, _mock_asset(), video_count=2)),
         patch(_SET_TENANT, new_callable=AsyncMock),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-001"),
         patch(_POLL_TASK),
     ):
         result = await request_api_video(_input())

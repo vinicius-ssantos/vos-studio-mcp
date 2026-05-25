@@ -1,10 +1,18 @@
 """Client service — create and manage client records."""
 
 import logging
+import uuid
 
 from db.models import Client
-from vos_studio_mcp.schemas.client import ClientInput, ClientResponse
-from vos_studio_mcp.services.database import get_session
+from vos_studio_mcp.errors import ErrorCode, VosError
+from vos_studio_mcp.schemas.client import (
+    ClientInput,
+    ClientResponse,
+    SetClientWebhookInput,
+    SetClientWebhookResponse,
+)
+from vos_studio_mcp.services.database import bypass_rls, get_session
+from vos_studio_mcp.services.webhook_ssrf_guard import validate_webhook_url
 
 log = logging.getLogger(__name__)
 
@@ -29,4 +37,50 @@ async def create_client(data: ClientInput) -> ClientResponse:
         name=client.name,
         summary=f"Client '{client.name}' created in industry '{client.industry}'.",
         next_action="save_brand_kit",
+    )
+
+
+async def set_client_webhook(
+    client_id: str,
+    data: SetClientWebhookInput,
+) -> SetClientWebhookResponse:
+    """Set or clear the outbound webhook URL for a client (Issue #47).
+
+    URL is validated with the SSRF guard before persisting so private/local
+    addresses are rejected at registration time, not only at delivery time.
+
+    Requires the caller to supply a valid *client_id* (UUID string).
+    """
+    if data.webhook_url is not None:
+        validate_webhook_url(data.webhook_url)
+
+    try:
+        cid = uuid.UUID(client_id)
+    except ValueError as exc:
+        raise VosError(ErrorCode.INVALID_INPUT, f"Invalid client_id: {client_id!r}") from exc
+
+    async with get_session() as session:
+        await bypass_rls(session)
+        client = await session.get(Client, cid)
+
+        if client is None:
+            raise VosError(ErrorCode.NOT_FOUND, f"Client {client_id!r} not found.")
+
+        client.webhook_url = data.webhook_url
+        await session.commit()
+
+    action = "set" if data.webhook_url else "cleared"
+    log.info(
+        f"client_webhook.{action}",
+        extra={"client_id": client_id, "webhook_url": data.webhook_url},
+    )
+    return SetClientWebhookResponse(
+        status="updated",
+        client_id=client_id,
+        webhook_url=data.webhook_url,
+        summary=(
+            f"Webhook URL {action} for client {client_id}."
+            if data.webhook_url
+            else f"Webhook URL cleared for client {client_id}."
+        ),
     )

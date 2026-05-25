@@ -6,6 +6,25 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
+@pytest.fixture(autouse=True)
+def reset_auth_context() -> None:
+    """Reset the auth ContextVar to None before every test (Issue #46).
+
+    Some tests call set_current_client_id() to simulate an auth context.
+    Without this fixture, the ContextVar value can leak into subsequent
+    tests because pytest-asyncio's per-function event loops inherit a copy
+    of the current synchronous context — including any ContextVar values
+    set in the main thread.
+
+    This fixture ensures every test starts with a clean auth state.
+    """
+    from vos_studio_mcp.auth import context as _ctx
+
+    token = _ctx._current_client_id.set(None)
+    yield  # type: ignore[misc]
+    _ctx._current_client_id.reset(token)
+
+
 @pytest.fixture
 def server_params() -> StdioServerParameters:
     """MCP server parameters for protocol-level tests (ADR-0026 Layer 4)."""

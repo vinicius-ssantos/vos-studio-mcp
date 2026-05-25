@@ -212,3 +212,60 @@ class TestNotifyJobFailed:
         payload = json.loads(captured_body[0])
         assert payload["event"] == "asset.failed"
         assert payload["generation_status"] == "failed"
+
+
+# ---------------------------------------------------------------------------
+# SSRF guard integration (Issue #47)
+# ---------------------------------------------------------------------------
+
+
+class TestSsrfGuardIntegration:
+    """_deliver must call check_webhook_url and swallow the error gracefully."""
+
+    @pytest.mark.asyncio
+    async def test_private_ip_url_is_swallowed_in_notify_completed(self) -> None:
+        """notify_job_completed must swallow VosError from the SSRF guard."""
+        from vos_studio_mcp.errors import ErrorCode, VosError
+        from vos_studio_mcp.services.webhook_notifier import notify_job_completed
+
+        with patch(
+            "vos_studio_mcp.services.webhook_notifier.check_webhook_url",
+            side_effect=VosError(ErrorCode.INVALID_INPUT, "SSRF blocked"),
+        ):
+            # Must NOT raise — SSRF violation is treated like a delivery error
+            await notify_job_completed(
+                asset_id=_ASSET_ID,
+                sprint_id=_SPRINT_ID,
+                client_id=_CLIENT_ID,
+                webhook_url="https://10.0.0.1/hook",
+                storage_url=None,
+                provider_job_id=None,
+            )
+
+    @pytest.mark.asyncio
+    async def test_ssrf_guard_called_before_http_request(self) -> None:
+        """The SSRF guard must run before any HTTP request is attempted."""
+        from vos_studio_mcp.errors import ErrorCode, VosError
+        from vos_studio_mcp.services.webhook_notifier import notify_job_completed
+
+        mock_http = AsyncMock()
+
+        with patch(
+            "vos_studio_mcp.services.webhook_notifier.check_webhook_url",
+            side_effect=VosError(ErrorCode.INVALID_INPUT, "SSRF blocked"),
+        ), patch(
+            "vos_studio_mcp.services.webhook_notifier.httpx.AsyncClient",
+            return_value=mock_http,
+        ):
+            await notify_job_completed(
+                asset_id=_ASSET_ID,
+                sprint_id=_SPRINT_ID,
+                client_id=_CLIENT_ID,
+                webhook_url="https://10.0.0.1/hook",
+                storage_url=None,
+                provider_job_id=None,
+            )
+
+        # HTTP client must never be used when SSRF guard blocks
+        mock_http.__aenter__ = AsyncMock()
+        mock_http.post.assert_not_called()
