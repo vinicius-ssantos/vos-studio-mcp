@@ -6,7 +6,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 ProviderMode = Literal[
     "dashboard_manual",
     "api_credits",
