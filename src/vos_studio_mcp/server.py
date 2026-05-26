@@ -20,6 +20,7 @@ from vos_studio_mcp.observability.middleware import (
     correlation_middleware,
     metrics_instrumentation_middleware,
 )
+from vos_studio_mcp.resources.playbook import register_resources_and_prompts
 from vos_studio_mcp.routes.webhooks import router as webhooks_router
 from vos_studio_mcp.services.status import get_health
 from vos_studio_mcp.tools import register_tools
@@ -47,6 +48,7 @@ if settings.is_production and not (
 
 mcp = FastMCP(settings.mcp_server_name)
 register_tools(mcp)
+register_resources_and_prompts(mcp)
 
 app = FastAPI(title=settings.mcp_server_name, debug=settings.debug)
 # Middleware executes in reverse registration order:
