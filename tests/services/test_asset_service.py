@@ -130,6 +130,14 @@ async def test_list_sprint_assets_returns_items() -> None:
     asset1.height = 1080
     asset1.format = "png"
     asset1.created_at = None
+    # Stage / lineage fields (Issue #53)
+    asset1.asset_stage = None
+    asset1.asset_kind = "manual"
+    asset1.source_asset_id = None
+    asset1.approved_as_reference = False
+    asset1.is_final_delivery = False
+    asset1.generation_status = "manual"
+    asset1.storage_status = "not_required"
 
     ctx = _asset_session_ctx(asset_list=[asset1])
     sprint_id = str(uuid.uuid4())

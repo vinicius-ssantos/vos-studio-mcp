@@ -213,10 +213,11 @@ async def prepare_video_blueprint(data: VideoBlueprintInput) -> VideoBlueprintRe
     restrictions = brand_kit.restrictions if brand_kit else {}
     identity = brand_kit.identity if brand_kit else {}
     visual = brand_kit.visual if brand_kit else {}
+    asset_lock: dict[str, object] = brand_kit.asset_lock or {} if brand_kit else {}
 
     creative_intent = _build_creative_intent(sprint, identity)
     shot_plan = _build_shot_plan(sprint, data.shot_count, visual)
-    negative_prompts = _build_negative_prompts(restrictions)
+    negative_prompts = _build_negative_prompts(restrictions, asset_lock)
     provider_packs = _build_provider_packs(sprint, data, shot_plan, negative_prompts)
     manual_checklist = _build_manual_checklist(sprint, data)
     cost_notes = _build_cost_notes(sprint)
@@ -351,7 +352,10 @@ def _build_vos_9shot_plan(sprint: Sprint, color_palette: str) -> list[ShotPlan]:
     return shots
 
 
-def _build_negative_prompts(restrictions: dict[str, object]) -> list[str]:
+def _build_negative_prompts(
+    restrictions: dict[str, object],
+    asset_lock: dict[str, object] | None = None,
+) -> list[str]:
     base = [
         "blurry or out-of-focus frames",
         "watermarks or overlaid text",
@@ -369,6 +373,17 @@ def _build_negative_prompts(restrictions: dict[str, object]) -> list[str]:
         base.extend(str(f) for f in forbidden_phrases)
     elif isinstance(forbidden_phrases, str) and forbidden_phrases:
         base.append(forbidden_phrases)
+    # Asset Lock v2: forbidden_register and forbidden_materials/environments
+    if asset_lock:
+        forbidden_register: object = asset_lock.get("forbidden_register")
+        if isinstance(forbidden_register, list):
+            base.extend(str(r) for r in forbidden_register)
+        elif isinstance(forbidden_register, str) and forbidden_register:
+            base.append(forbidden_register)
+        for key in ("forbidden_materials", "forbidden_environments"):
+            items: object = asset_lock.get(key)
+            if isinstance(items, list):
+                base.extend(str(i) for i in items)
     return base
 
 

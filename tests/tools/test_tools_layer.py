@@ -74,6 +74,7 @@ _EXPECTED_TOOLS = {
     "generate_campaign_angles",
     "reset_circuit_breaker",
     "review_asset_quality",
+    "prepare_execution_pack",
 }
 
 

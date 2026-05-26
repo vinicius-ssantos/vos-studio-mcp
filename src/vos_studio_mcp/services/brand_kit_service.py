@@ -23,6 +23,7 @@ async def save_brand_kit(data: BrandKitInput) -> BrandKitResponse:
             identity=data.identity.model_dump(),
             visual=data.visual.model_dump(),
             restrictions=data.restrictions.model_dump(),
+            asset_lock=data.asset_lock.model_dump() if data.asset_lock is not None else None,
         )
         session.add(brand_kit)
         await session.commit()

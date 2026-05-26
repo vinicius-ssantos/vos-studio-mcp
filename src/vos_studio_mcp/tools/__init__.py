@@ -19,6 +19,7 @@ from vos_studio_mcp.tools.list_sprint_assets import register_list_sprint_assets_
 from vos_studio_mcp.tools.list_video_jobs import register_list_video_jobs_tools
 from vos_studio_mcp.tools.prepare_creative_brief import register_prepare_creative_brief_tools
 from vos_studio_mcp.tools.prepare_dashboard_pack import register_prepare_dashboard_pack_tools
+from vos_studio_mcp.tools.prepare_execution_pack import register_prepare_execution_pack_tools
 from vos_studio_mcp.tools.prepare_video_blueprint import register_prepare_video_blueprint_tools
 from vos_studio_mcp.tools.promote_to_library import register_promote_to_library_tools
 from vos_studio_mcp.tools.record_asset_performance import register_record_asset_performance_tools
@@ -62,3 +63,4 @@ def register_tools(mcp: FastMCP) -> None:
     register_generate_campaign_angles_tools(mcp)
     register_reset_circuit_breaker_tools(mcp)
     register_review_asset_quality_tools(mcp)
+    register_prepare_execution_pack_tools(mcp)
