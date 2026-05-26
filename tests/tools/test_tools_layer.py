@@ -73,6 +73,7 @@ _EXPECTED_TOOLS = {
     "prepare_creative_brief",
     "generate_campaign_angles",
     "reset_circuit_breaker",
+    "review_asset_quality",
 }
 
 

@@ -38,6 +38,13 @@ if settings.sentry_dsn:
         send_default_pii=False,
     )
 
+if settings.is_production and not (
+    settings.oauth_issuer_url or settings.supabase_jwt_secret or settings.dev_bearer_token
+):
+    log.warning(
+        "auth.not_configured_in_production — set OAUTH_ISSUER_URL, SUPABASE_JWT_SECRET, or DEV_BEARER_TOKEN"
+    )
+
 mcp = FastMCP(settings.mcp_server_name)
 register_tools(mcp)
 

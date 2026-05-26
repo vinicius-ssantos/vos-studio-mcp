@@ -28,6 +28,7 @@ from vos_studio_mcp.tools.record_performance_metrics import (
 from vos_studio_mcp.tools.register_manual_asset import register_manual_asset_tools
 from vos_studio_mcp.tools.request_api_video import register_request_api_video_tools
 from vos_studio_mcp.tools.reset_circuit_breaker import register_reset_circuit_breaker_tools
+from vos_studio_mcp.tools.review_asset_quality import register_review_asset_quality_tools
 from vos_studio_mcp.tools.save_brand_kit import register_save_brand_kit_tools
 from vos_studio_mcp.tools.search_library import register_search_library_tools
 from vos_studio_mcp.tools.set_client_webhook import register_set_client_webhook_tools
@@ -60,3 +61,4 @@ def register_tools(mcp: FastMCP) -> None:
     register_prepare_creative_brief_tools(mcp)
     register_generate_campaign_angles_tools(mcp)
     register_reset_circuit_breaker_tools(mcp)
+    register_review_asset_quality_tools(mcp)

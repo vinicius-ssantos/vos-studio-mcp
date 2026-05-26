@@ -80,10 +80,18 @@ class Settings(BaseSettings):
     cloudflare_account_id: str = Field(default="", alias="CLOUDFLARE_ACCOUNT_ID")
     cloudflare_api_token: str = Field(default="", alias="CLOUDFLARE_API_TOKEN")
 
+    # Runtime environment — controls auth enforcement
+    env: str = Field(default="development", alias="APP_ENV")
+
     # Observability (ADR-0030)
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
     sentry_environment: str = Field(default="development", alias="SENTRY_ENVIRONMENT")
     sentry_traces_sample_rate: float = Field(default=0.1, alias="SENTRY_TRACES_SAMPLE_RATE")
+
+    @property
+    def is_production(self) -> bool:
+        """Return True when running in a production environment."""
+        return self.env.lower() in ("production", "prod")
 
 
 @lru_cache

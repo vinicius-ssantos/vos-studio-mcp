@@ -83,6 +83,88 @@ _CAMERA_MOVEMENTS = [
 
 _PACING_OPTIONS = ["slow-burn (4–6 s)", "mid-pace (2–4 s)", "energetic (1–2 s)"]
 
+# ---------------------------------------------------------------------------
+# VOS 9-shot structure constant and data
+# ---------------------------------------------------------------------------
+
+VOS_DEFAULT_SHOT_COUNT = 9
+
+# Block definitions: (block_name, pacing, list of (role, camera_movement, scene_suffix, keyframe_note))
+_VOS_SHOT_BLOCKS: list[tuple[str, str, list[tuple[str, str, str, str]]]] = [
+    (
+        "Establish",
+        "slow-burn",
+        [
+            (
+                "wide establishing shot",
+                "Static wide establishing",
+                "opening wide establishing frame — set location and atmosphere",
+                "Frame wide; keep {product} anchored in mid-ground with environment context.",
+            ),
+            (
+                "medium product reveal",
+                "Pan right to product reveal",
+                "medium-shot reveal of {product} for {audience}",
+                "Lead the eye to {product}; hero it centrally at medium distance.",
+            ),
+            (
+                "close-up detail",
+                "Close-up hold with subtle zoom",
+                "close-up detail shot highlighting key feature of {product}",
+                "Fill frame with the most distinctive feature; maintain {palette} palette.",
+            ),
+        ],
+    ),
+    (
+        "Engage",
+        "mid-pace",
+        [
+            (
+                "medium lifestyle/context",
+                "Tracking shot left-to-right",
+                "medium lifestyle shot — {product} in context for {audience}",
+                "Show {audience} interacting naturally with {product}; authentic environment.",
+            ),
+            (
+                "close-up emotional",
+                "Rack focus from background to foreground",
+                "close-up emotional beat — human response to {product}",
+                "Rack focus to subject's face or hands; convey emotion, not just product.",
+            ),
+            (
+                "wide action/use",
+                "Aerial pull-back",
+                "wide action shot — {product} in full use for {audience}",
+                "Pull back to reveal full scene; reinforce scale and energy of the moment.",
+            ),
+        ],
+    ),
+    (
+        "Convert",
+        "energetic",
+        [
+            (
+                "medium social proof/result",
+                "Slow push-in",
+                "medium social proof or result shot for {product}",
+                "Show result or transformation; reinforce credibility with visual evidence.",
+            ),
+            (
+                "close-up CTA element",
+                "Close-up hold with subtle zoom",
+                "close-up CTA element — call-to-action detail for {product}",
+                "Isolate CTA element (pack, screen, label); must be legible on mobile.",
+            ),
+            (
+                "wide brand close",
+                "Crane down to subject",
+                "wide brand closing shot — {product} brand signature for {audience}",
+                "Close on brand mark or hero product in a clean wide frame; {palette} dominant.",
+            ),
+        ],
+    ),
+]
+
 
 # ---------------------------------------------------------------------------
 # Public service function
@@ -204,6 +286,10 @@ def _build_shot_plan(sprint: Sprint, shot_count: int, visual: dict[str, object])
     secondary: list[object] = list(raw_secondary) if isinstance(raw_secondary, list) else []
     all_colors = primary + secondary
     color_palette = ", ".join(str(c) for c in all_colors[:3]) if all_colors else "brand palette"
+
+    if shot_count == VOS_DEFAULT_SHOT_COUNT:
+        return _build_vos_9shot_plan(sprint, color_palette)
+
     brief_words = sprint.brief.split()
     shots: list[ShotPlan] = []
     for i in range(1, shot_count + 1):
@@ -228,6 +314,40 @@ def _build_shot_plan(sprint: Sprint, shot_count: int, visual: dict[str, object])
                 duration_seconds=5,
             )
         )
+    return shots
+
+
+def _build_vos_9shot_plan(sprint: Sprint, color_palette: str) -> list[ShotPlan]:
+    """Build the VOS-standard 9-shot plan: 3 blocks × 3 shots (Establish → Engage → Convert)."""
+    shots: list[ShotPlan] = []
+    shot_number = 1
+    for _block_name, pacing, shot_defs in _VOS_SHOT_BLOCKS:
+        for role, movement, scene_template, keyframe_template in shot_defs:
+            scene = scene_template.format(
+                product=sprint.product_name,
+                audience=sprint.target_audience,
+            )
+            keyframe = keyframe_template.format(
+                product=sprint.product_name,
+                palette=color_palette,
+                audience=sprint.target_audience,
+            )
+            motion_prompt = (
+                f"{movement} — {role} of {sprint.product_name}, "
+                f"{color_palette} color palette, targeting {sprint.target_audience}"
+            )
+            shots.append(
+                ShotPlan(
+                    shot_number=shot_number,
+                    scene_description=scene,
+                    motion_prompt=motion_prompt,
+                    keyframe_guidance=keyframe,
+                    camera_movement=movement,
+                    pacing=pacing,
+                    duration_seconds=4,
+                )
+            )
+            shot_number += 1
     return shots
 
 
