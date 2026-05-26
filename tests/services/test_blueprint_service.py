@@ -92,7 +92,7 @@ async def test_blueprint_ready_returns_response() -> None:
 @pytest.mark.asyncio
 async def test_blueprint_includes_negative_prompts_from_brand_kit() -> None:
     sprint = _make_sprint()
-    bk = _make_brand_kit(restrictions={"forbidden_themes": ["violence", "gambling"]})
+    bk = _make_brand_kit(restrictions={"forbidden_elements": ["violence", "gambling"]})
 
     with (
         patch(f"{_MODULE}.get_session", return_value=_make_session_ctx(sprint, bk)),
@@ -232,14 +232,20 @@ def test_build_negative_prompts_includes_base_list() -> None:
     assert "watermarks or overlaid text" in negs
 
 
-def test_build_negative_prompts_appends_forbidden_list() -> None:
-    negs = _build_negative_prompts({"forbidden_themes": ["nudity", "politics"]})
+def test_build_negative_prompts_appends_forbidden_elements_list() -> None:
+    negs = _build_negative_prompts({"forbidden_elements": ["nudity", "politics"]})
     assert "nudity" in negs
     assert "politics" in negs
 
 
-def test_build_negative_prompts_handles_string_forbidden() -> None:
-    negs = _build_negative_prompts({"forbidden": "excessive darkness"})
+def test_build_negative_prompts_appends_forbidden_phrases_list() -> None:
+    negs = _build_negative_prompts({"forbidden_phrases": ["buy now", "limited offer"]})
+    assert "buy now" in negs
+    assert "limited offer" in negs
+
+
+def test_build_negative_prompts_handles_string_forbidden_elements() -> None:
+    negs = _build_negative_prompts({"forbidden_elements": "excessive darkness"})
     assert "excessive darkness" in negs
 
 

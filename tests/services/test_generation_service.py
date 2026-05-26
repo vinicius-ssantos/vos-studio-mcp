@@ -78,6 +78,10 @@ def _session_ctx(sprint: MagicMock, asset: MagicMock, video_count: int = 0) -> M
     session.get = AsyncMock(return_value=sprint)
     scalar = MagicMock()
     scalar.scalar_one = MagicMock(return_value=video_count)
+    # Fix #67: generation_service now also calls session.execute(select(Sprint).with_for_update())
+    # and calls .scalar_one_or_none() on the result.  Both scalar_one and scalar_one_or_none
+    # are handled by the same mock object returned from session.execute.
+    scalar.scalar_one_or_none = MagicMock(return_value=sprint)
     session.execute = AsyncMock(return_value=scalar)
     session.add = MagicMock()
     session.commit = AsyncMock()
@@ -105,7 +109,7 @@ async def test_request_api_video_success() -> None:
         patch(_GET_ADAPTER, return_value=adapter),
         patch(_GET_SESSION, return_value=_session_ctx(sprint, asset)),
         patch(_SET_TENANT, new_callable=AsyncMock),
-        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-001"),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="aaaaaaaa-0000-0000-0000-000000000099"),
         patch(_POLL_TASK),
     ):
         result = await request_api_video(_input())
@@ -128,7 +132,7 @@ async def test_request_api_video_updates_sprint_spent_usd() -> None:
         patch(_GET_ADAPTER, return_value=adapter),
         patch(_GET_SESSION, return_value=_session_ctx(sprint, _mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock),
-        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-001"),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="aaaaaaaa-0000-0000-0000-000000000099"),
         patch(_POLL_TASK),
     ):
         await request_api_video(_input())
@@ -235,7 +239,7 @@ async def test_max_videos_not_reached_succeeds() -> None:
         patch(_GET_ADAPTER, return_value=_mock_adapter()),
         patch(_GET_SESSION, return_value=_session_ctx(sprint, _mock_asset(), video_count=2)),
         patch(_SET_TENANT, new_callable=AsyncMock),
-        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-001"),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="aaaaaaaa-0000-0000-0000-000000000099"),
         patch(_POLL_TASK),
     ):
         result = await request_api_video(_input())

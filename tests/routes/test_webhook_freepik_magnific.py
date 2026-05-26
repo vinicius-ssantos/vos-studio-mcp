@@ -14,6 +14,7 @@ from vos_studio_mcp.routes.webhooks import router
 
 _SESSION_PATCH = "vos_studio_mcp.routes.webhooks.get_session"
 _UPLOAD_TASK_PATCH = "vos_studio_mcp.routes.webhooks.upload_video_to_storage"
+_UPLOAD_IMAGE_TASK_PATCH = "vos_studio_mcp.routes.webhooks.upload_image_to_storage"
 _FREEPIK_SETTINGS_PATCH = "vos_studio_mcp.services.providers.freepik.get_settings"
 _MAGNIFIC_SETTINGS_PATCH = "vos_studio_mcp.services.providers.magnific.get_settings"
 
@@ -102,7 +103,7 @@ class TestFreepikWebhook:
         with (
             patch(_FREEPIK_SETTINGS_PATCH, return_value=_freepik_settings()),
             patch(_SESSION_PATCH, return_value=session_ctx),
-            patch(_UPLOAD_TASK_PATCH) as mock_upload,
+            patch(_UPLOAD_IMAGE_TASK_PATCH) as mock_upload,
             TestClient(_app()) as c,
         ):
             resp = c.post(
@@ -149,7 +150,7 @@ class TestFreepikWebhook:
         with (
             patch(_FREEPIK_SETTINGS_PATCH, return_value=_freepik_settings()),
             patch(_SESSION_PATCH, return_value=session_ctx),
-            patch(_UPLOAD_TASK_PATCH),
+            patch(_UPLOAD_IMAGE_TASK_PATCH),
             TestClient(_app()) as c,
         ):
             resp = c.post(
@@ -239,7 +240,7 @@ class TestMagnificWebhook:
         with (
             patch(_MAGNIFIC_SETTINGS_PATCH, return_value=_magnific_settings()),
             patch(_SESSION_PATCH, return_value=session_ctx),
-            patch(_UPLOAD_TASK_PATCH) as mock_upload,
+            patch(_UPLOAD_IMAGE_TASK_PATCH) as mock_upload,
             TestClient(_app()) as c,
         ):
             resp = c.post(
@@ -286,7 +287,7 @@ class TestMagnificWebhook:
         with (
             patch(_MAGNIFIC_SETTINGS_PATCH, return_value=_magnific_settings()),
             patch(_SESSION_PATCH, return_value=session_ctx),
-            patch(_UPLOAD_TASK_PATCH),
+            patch(_UPLOAD_IMAGE_TASK_PATCH),
             TestClient(_app()) as c,
         ):
             resp = c.post(
@@ -309,7 +310,7 @@ class TestMagnificWebhook:
         with (
             patch(_MAGNIFIC_SETTINGS_PATCH, return_value=_magnific_settings()),
             patch(_SESSION_PATCH, return_value=session_ctx),
-            patch(_UPLOAD_TASK_PATCH),
+            patch(_UPLOAD_IMAGE_TASK_PATCH),
             TestClient(_app()) as c,
         ):
             resp = c.post(

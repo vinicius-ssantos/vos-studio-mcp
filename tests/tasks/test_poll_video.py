@@ -19,12 +19,17 @@ def _mock_asset(
     job_id: str = "gen-123",
     status: str = "pending",
     storage_status: str = "not_required",
+    provider_usage_event_id: str | None = None,
 ) -> MagicMock:
+    import uuid as _uuid
     asset = MagicMock()
     asset.provider_job_id = job_id
     asset.generation_status = status
     asset.storage_status = storage_status
     asset.storage_url = None
+    asset.provider_usage_event_id = (
+        _uuid.UUID(provider_usage_event_id) if provider_usage_event_id else None
+    )
     return asset
 
 
@@ -353,3 +358,56 @@ async def test_mark_status_skips_commit_when_asset_not_found() -> None:
         await _mark_status("missing-asset", "failed")
 
     session.commit.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Fix #64 — record_actual_cost called on job completion
+# ---------------------------------------------------------------------------
+
+_RECORD_ACTUAL_COST = f"{_TASK_MODULE}.record_actual_cost"
+
+
+@pytest.mark.asyncio
+async def test_check_calls_record_actual_cost_when_usage_event_id_set() -> None:
+    """On completion, record_actual_cost must be awaited with the event_id."""
+    event_id = "aaaaaaaa-0000-0000-0000-000000000001"
+    asset = _mock_asset(status="pending", provider_usage_event_id=event_id)
+    adapter = MagicMock()
+    adapter.check_job_status = AsyncMock(
+        return_value=JobStatus(job_id="gen-123", status="completed", media_url=None)
+    )
+    record_actual = AsyncMock()
+
+    with (
+        patch(_GET_SESSION, return_value=_session_ctx(asset)),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(_GET_ADAPTER, return_value=adapter),
+        patch(_RECORD_ACTUAL_COST, record_actual),
+    ):
+        from vos_studio_mcp.tasks.poll_video import _check_and_update
+        result = await _check_and_update("asset-001")
+
+    assert result == "done"
+    record_actual.assert_awaited_once_with(event_id, 0.0)
+
+
+@pytest.mark.asyncio
+async def test_check_skips_record_actual_cost_when_no_usage_event_id() -> None:
+    """If provider_usage_event_id is None, record_actual_cost must not be called."""
+    asset = _mock_asset(status="pending", provider_usage_event_id=None)
+    adapter = MagicMock()
+    adapter.check_job_status = AsyncMock(
+        return_value=JobStatus(job_id="gen-123", status="completed", media_url=None)
+    )
+    record_actual = AsyncMock()
+
+    with (
+        patch(_GET_SESSION, return_value=_session_ctx(asset)),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(_GET_ADAPTER, return_value=adapter),
+        patch(_RECORD_ACTUAL_COST, record_actual),
+    ):
+        from vos_studio_mcp.tasks.poll_video import _check_and_update
+        await _check_and_update("asset-001")
+
+    record_actual.assert_not_awaited()

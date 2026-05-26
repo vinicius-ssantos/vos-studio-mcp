@@ -88,22 +88,41 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
 
     # Check and record the global provider daily quota (outside session to avoid
     # holding the DB connection while performing an additional async query).
-    await check_provider_budget("higgsfield", data.client_id, data.sprint_id, estimate.estimated_usd)
+    usage_event_id = await check_provider_budget(
+        "higgsfield", data.client_id, data.sprint_id, estimate.estimated_usd
+    )
 
     async with get_session() as session:
         await set_tenant_context(session, data.client_id)
-        sprint = await session.get(Sprint, uuid.UUID(data.sprint_id))
+
+        # Fix #67: Re-validate budget under a row-level lock to prevent concurrent
+        # requests from both passing the first validation and then both submitting.
+        result = await session.execute(
+            select(Sprint)
+            .where(Sprint.id == uuid.UUID(data.sprint_id))
+            .with_for_update()
+        )
+        sprint = result.scalar_one_or_none()
         if sprint is None:  # pragma: no cover — already checked above
             raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
+
+        # Re-validate budget under the lock to catch concurrent submissions.
+        if sprint.spent_usd + estimate.estimated_usd > sprint.max_spend_usd:
+            raise VosError(
+                ErrorCode.BUDGET_EXCEEDED,
+                f"Generation would exceed sprint budget "
+                f"(remaining ${sprint.max_spend_usd - sprint.spent_usd:.2f}, "
+                f"estimated ${estimate.estimated_usd:.2f})",
+            )
 
         log.info(
             "generation.requested",
             extra={"sprint_id": data.sprint_id, "provider": "higgsfield"},
         )
-        result = await adapter.generate_video(params)
+        gen_result = await adapter.generate_video(params)
         log.info(
             "generation.provider_submitted",
-            extra={"sprint_id": data.sprint_id, "job_id": result.job_id, "provider": "higgsfield"},
+            extra={"sprint_id": data.sprint_id, "job_id": gen_result.job_id, "provider": "higgsfield"},
         )
 
         asset = Asset(
@@ -112,9 +131,10 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
             prompt_version=data.prompt_version,
             preset_version=data.preset_version,
             storage_url=None,
-            provider_job_id=result.job_id,
+            provider_job_id=gen_result.job_id,
             generation_status="pending",
             storage_status="not_required",
+            provider_usage_event_id=uuid.UUID(usage_event_id) if usage_event_id else None,
         )
         session.add(asset)
 
@@ -141,7 +161,7 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
         extra={
             "sprint_id": data.sprint_id,
             "asset_id": str(asset.id),
-            "job_id": result.job_id,
+            "job_id": gen_result.job_id,
             "provider": "higgsfield",
             "estimated_usd": estimate.estimated_usd,
         },
@@ -149,22 +169,25 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
 
     return ApiVideoResponse(
         status="queued",
-        job_id=result.job_id,
+        job_id=gen_result.job_id,
         asset_id=str(asset.id),
         sprint_id=data.sprint_id,
         estimated_cost_usd=estimate.estimated_usd,
         summary=(
             f"Video generation queued for sprint '{data.sprint_id}'. "
-            f"Job ID: {result.job_id}. Estimated cost: ${estimate.estimated_usd:.2f}."
+            f"Job ID: {gen_result.job_id}. Estimated cost: ${estimate.estimated_usd:.2f}."
         ),
         next_action="get_video_job_status",
     )
 
 
+# Fix #65: Summary and next_action are now storage-status-aware when generation
+# is "completed". The simple dict lookup is replaced by a function that checks
+# both generation_status and storage_status.
+
 _NEXT_ACTION: dict[str, str] = {
     "pending": "get_video_job_status",
     "processing": "get_video_job_status",
-    "completed": "prepare_dashboard_pack",
     "failed": "request_api_video",
     "manual": "list_sprint_assets",
 }
@@ -172,10 +195,31 @@ _NEXT_ACTION: dict[str, str] = {
 _SUMMARY: dict[str, str] = {
     "pending": "Video generation is queued. Poll again shortly.",
     "processing": "Video generation is in progress. Poll again shortly.",
-    "completed": "Video is ready in storage.",
     "failed": "Video generation failed. You may retry with request_api_video.",
     "manual": "Asset was registered manually — no generation job.",
 }
+
+
+def _resolve_summary(generation_status: str, storage_status: str) -> str:
+    """Return a summary that reflects both generation and storage status."""
+    if generation_status == "completed":
+        if storage_status == "stored":
+            return "Video is ready in storage."
+        if storage_status == "failed":
+            return "Generation complete but storage upload failed."
+        # pending or any other transitional state
+        return "Generation complete — upload to storage in progress."
+    return _SUMMARY.get(generation_status, f"Unknown status: {generation_status}")
+
+
+def _resolve_next_action(generation_status: str, storage_status: str) -> str:
+    """Return the recommended next action based on both statuses."""
+    if generation_status == "completed":
+        if storage_status == "stored":
+            return "prepare_dashboard_pack"
+        # still uploading or upload failed — poll again
+        return "get_video_job_status"
+    return _NEXT_ACTION.get(generation_status, "get_video_job_status")
 
 
 async def get_video_job_status(asset_id: str) -> VideoJobStatusResponse:
@@ -189,15 +233,16 @@ async def get_video_job_status(asset_id: str) -> VideoJobStatusResponse:
     assert_owns_client(client_id)
 
     gen_status = asset.generation_status
+    stor_status = asset.storage_status
     return VideoJobStatusResponse(
         status="ok",
         asset_id=asset_id,
         generation_status=gen_status,
-        storage_status=asset.storage_status,
+        storage_status=stor_status,
         storage_url=asset.storage_url,
         provider_job_id=asset.provider_job_id,
-        summary=_SUMMARY.get(gen_status, f"Unknown status: {gen_status}"),
-        next_action=_NEXT_ACTION.get(gen_status, "get_video_job_status"),
+        summary=_resolve_summary(gen_status, stor_status),
+        next_action=_resolve_next_action(gen_status, stor_status),
     )
 
 

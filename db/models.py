@@ -128,6 +128,9 @@ class Asset(Base):
     provider_job_id: Mapped[str | None] = mapped_column(String(120), index=True)
     generation_status: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
     storage_status: Mapped[str] = mapped_column(String(20), nullable=False, default="not_required")
+    provider_usage_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

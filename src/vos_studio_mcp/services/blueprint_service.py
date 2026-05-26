@@ -183,7 +183,13 @@ async def prepare_video_blueprint(data: VideoBlueprintInput) -> VideoBlueprintRe
 
 
 def _build_creative_intent(sprint: Sprint, identity: dict[str, object]) -> str:
-    tone = identity.get("tone", "authentic and engaging")
+    raw_tone = identity.get("tone")
+    if isinstance(raw_tone, list) and raw_tone:
+        tone: str = ", ".join(str(t) for t in raw_tone)
+    elif isinstance(raw_tone, str) and raw_tone:
+        tone = raw_tone
+    else:
+        tone = "authentic and engaging"
     return (
         f"Produce a {tone} video showcasing {sprint.product_name} "
         f"to {sprint.target_audience}. "
@@ -192,7 +198,12 @@ def _build_creative_intent(sprint: Sprint, identity: dict[str, object]) -> str:
 
 
 def _build_shot_plan(sprint: Sprint, shot_count: int, visual: dict[str, object]) -> list[ShotPlan]:
-    color_palette = visual.get("color_palette", "brand palette")
+    raw_primary = visual.get("primary_colors")
+    raw_secondary = visual.get("secondary_colors")
+    primary: list[object] = list(raw_primary) if isinstance(raw_primary, list) else []
+    secondary: list[object] = list(raw_secondary) if isinstance(raw_secondary, list) else []
+    all_colors = primary + secondary
+    color_palette = ", ".join(str(c) for c in all_colors[:3]) if all_colors else "brand palette"
     brief_words = sprint.brief.split()
     shots: list[ShotPlan] = []
     for i in range(1, shot_count + 1):
@@ -228,11 +239,16 @@ def _build_negative_prompts(restrictions: dict[str, object]) -> list[str]:
         "distorted proportions",
         "low-resolution artifacts",
     ]
-    forbidden: object = restrictions.get("forbidden_themes") or restrictions.get("forbidden")
-    if isinstance(forbidden, list):
-        base.extend(str(f) for f in forbidden)
-    elif isinstance(forbidden, str) and forbidden:
-        base.append(forbidden)
+    forbidden_elements: object = restrictions.get("forbidden_elements")
+    if isinstance(forbidden_elements, list):
+        base.extend(str(f) for f in forbidden_elements)
+    elif isinstance(forbidden_elements, str) and forbidden_elements:
+        base.append(forbidden_elements)
+    forbidden_phrases: object = restrictions.get("forbidden_phrases")
+    if isinstance(forbidden_phrases, list):
+        base.extend(str(f) for f in forbidden_phrases)
+    elif isinstance(forbidden_phrases, str) and forbidden_phrases:
+        base.append(forbidden_phrases)
     return base
 
 
