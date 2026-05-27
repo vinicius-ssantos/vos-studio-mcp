@@ -468,7 +468,6 @@ async def test_get_sprint_performance_summary_not_found() -> None:
     assert exc.value.error_code == ErrorCode.NOT_FOUND
 
 
-
 # ---------------------------------------------------------------------------
 # list_sprints tests
 # ---------------------------------------------------------------------------
