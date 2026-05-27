@@ -32,8 +32,7 @@ async def validate_bearer_token(token: str, issuer_url: str) -> str | None:
         decoded = jwt.decode(token, key_set, algorithms=_ALLOWED_ALGORITHMS)
         claims: dict[str, Any] = decoded.claims
         _check_expiry(claims)
-        client_id: str | None = claims.get("client_id") or claims.get("sub")
-        return client_id
+        return _extract_client_id(claims)
     except JoseError as exc:
         log.warning("jwt validation failed", extra={"reason": str(exc)})
         return None
@@ -102,9 +101,13 @@ def _check_supabase_role(claims: dict[str, Any]) -> None:
         raise ValueError(f"rejected Supabase role: {role!r}")
 
 
-def _extract_supabase_client_id(claims: dict[str, Any]) -> str | None:
+def _extract_client_id(claims: dict[str, Any]) -> str | None:
     app_meta: dict[str, Any] = claims.get("app_metadata") or {}
-    return app_meta.get("client_id") or claims.get("sub")
+    return app_meta.get("client_id") or claims.get("client_id") or claims.get("sub")
+
+
+def _extract_supabase_client_id(claims: dict[str, Any]) -> str | None:
+    return _extract_client_id(claims)
 
 
 # Suppress unused import — Header is re-exported for tests that need to inspect headers.

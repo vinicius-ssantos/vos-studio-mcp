@@ -1,6 +1,8 @@
 """FastAPI/FastMCP application entrypoint."""
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import sentry_sdk
@@ -46,11 +48,44 @@ if settings.is_production and not (
         "auth.not_configured_in_production — set OAUTH_ISSUER_URL, SUPABASE_JWT_SECRET, or DEV_BEARER_TOKEN"
     )
 
-mcp = FastMCP(settings.mcp_server_name)
+mcp = FastMCP(settings.mcp_server_name, streamable_http_path="/")
 register_tools(mcp)
 register_resources_and_prompts(mcp)
 
-app = FastAPI(title=settings.mcp_server_name, debug=settings.debug)
+
+def _get_mcp_app(mcp_server: FastMCP) -> Any:
+    """Return the FastMCP ASGI app supported by the installed SDK."""
+    streamable_http_app = getattr(mcp_server, "streamable_http_app", None)
+    if callable(streamable_http_app):
+        return streamable_http_app()
+
+    sse_app = getattr(mcp_server, "sse_app", None)
+    if callable(sse_app):
+        return sse_app()
+
+    return None
+
+
+mcp_app = _get_mcp_app(mcp)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Start the FastMCP Streamable HTTP session manager with the FastAPI app."""
+    session_manager = getattr(mcp, "_session_manager", None)
+    if (
+        mcp_app is not None
+        and session_manager is not None
+        and not getattr(session_manager, "_has_started", False)
+    ):
+        async with mcp.session_manager.run():
+            yield
+        return
+
+    yield
+
+
+app = FastAPI(title=settings.mcp_server_name, debug=settings.debug, lifespan=lifespan)
 # Middleware executes in reverse registration order:
 # metrics_instrumentation runs outermost, then correlation, then auth.
 app.middleware("http")(auth_middleware)
@@ -98,16 +133,18 @@ async def metrics() -> Response:
     return Response(content=body, media_type=content_type)
 
 
-def _mount_mcp_app(fastapi_app: FastAPI, mcp_server: FastMCP) -> None:
+def _mount_mcp_app(
+    fastapi_app: FastAPI,
+    mcp_server: FastMCP,
+    asgi_app: Any | None = None,
+) -> None:
     """Mount the FastMCP ASGI app when supported by the installed SDK."""
-    for method_name in ("streamable_http_app", "sse_app"):
-        method = getattr(mcp_server, method_name, None)
-        if callable(method):
-            fastapi_app.mount("/mcp", cast(Any, method)())
-            return
+    app_to_mount = asgi_app if asgi_app is not None else _get_mcp_app(mcp_server)
+    if app_to_mount is not None:
+        fastapi_app.mount("/mcp", cast(Any, app_to_mount))
 
 
-_mount_mcp_app(app, mcp)
+_mount_mcp_app(app, mcp, mcp_app)
 
 if __name__ == "__main__":
     mcp.run()
