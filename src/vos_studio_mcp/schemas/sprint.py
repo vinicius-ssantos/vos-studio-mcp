@@ -7,6 +7,33 @@ from pydantic import BaseModel, Field
 from vos_studio_mcp.schemas.performance_record import PerformanceContext
 
 
+class SprintListFilters(BaseModel):
+    status: Literal["open", "closed"] | None = Field(
+        default=None,
+        description="Filter by sprint status. Omit to return all.",
+    )
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class SprintListItem(BaseModel):
+    sprint_id: str
+    product_name: str
+    sprint_status: str
+    mode: str
+    spent_usd: float
+    max_spend_usd: float
+    asset_count: int
+    created_at: str  # ISO 8601
+
+
+class SprintListResponse(BaseModel):
+    status: str
+    client_id: str
+    total: int
+    sprints: list[SprintListItem]
+    next_action: str
+
+
 class SprintBudget(BaseModel):
     max_spend_usd: float = Field(..., gt=0)
     max_images: int | None = None

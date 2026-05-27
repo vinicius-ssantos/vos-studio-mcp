@@ -466,3 +466,111 @@ async def test_get_sprint_performance_summary_not_found() -> None:
         await get_sprint_performance_summary(str(uuid.uuid4()))
 
     assert exc.value.error_code == ErrorCode.NOT_FOUND
+
+
+# ---------------------------------------------------------------------------
+# list_sprints tests
+# ---------------------------------------------------------------------------
+
+
+def _make_sprint_orm_with_date(**kwargs: object) -> MagicMock:
+    import datetime as dt
+    s = _mock_sprint_orm(**kwargs)
+    s.created_at = dt.datetime(2026, 5, 1, tzinfo=dt.UTC)
+    return s
+
+
+@pytest.mark.asyncio
+async def test_list_sprints_returns_items() -> None:
+    from vos_studio_mcp.services.sprint_service import list_sprints
+
+    cid = "00000000-0000-0000-0000-000000000001"
+    sprint = _make_sprint_orm_with_date(product_name="Product A")
+    sprint.id = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000001")
+
+    session = AsyncMock()
+    session.get = AsyncMock()
+
+    # First execute → sprints list
+    sprints_result = MagicMock()
+    sprints_result.scalars.return_value.all.return_value = [sprint]
+
+    # Second execute → asset counts
+    count_result = MagicMock()
+    count_result.all.return_value = [(sprint.id, 3)]
+
+    session.execute = AsyncMock(side_effect=[sprints_result, count_result])
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_GUARD),
+        patch(_GET_SESSION, return_value=ctx),
+        patch(_SET_TENANT, new_callable=AsyncMock),
+    ):
+        result = await list_sprints(cid)
+
+    assert result.status == "ok"
+    assert result.total == 1
+    assert result.sprints[0].product_name == "Product A"
+    assert result.sprints[0].asset_count == 3
+    assert result.next_action == "get_sprint_status"
+
+
+@pytest.mark.asyncio
+async def test_list_sprints_empty_returns_create_action() -> None:
+    from vos_studio_mcp.services.sprint_service import list_sprints
+
+    cid = "00000000-0000-0000-0000-000000000001"
+
+    session = AsyncMock()
+    sprints_result = MagicMock()
+    sprints_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=sprints_result)
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_GUARD),
+        patch(_GET_SESSION, return_value=ctx),
+        patch(_SET_TENANT, new_callable=AsyncMock),
+    ):
+        result = await list_sprints(cid)
+
+    assert result.total == 0
+    assert result.next_action == "create_creative_sprint"
+
+
+@pytest.mark.asyncio
+async def test_list_sprints_status_filter_passed() -> None:
+    """When filters.status='open' is passed the result only contains open sprints."""
+    from vos_studio_mcp.schemas.sprint import SprintListFilters
+    from vos_studio_mcp.services.sprint_service import list_sprints
+
+    cid = "00000000-0000-0000-0000-000000000001"
+    open_sprint = _make_sprint_orm_with_date(sprint_status="open")
+    open_sprint.id = uuid.UUID("bbbbbbbb-0000-0000-0000-000000000001")
+
+    session = AsyncMock()
+    sprints_result = MagicMock()
+    sprints_result.scalars.return_value.all.return_value = [open_sprint]
+    count_result = MagicMock()
+    count_result.all.return_value = [(open_sprint.id, 0)]
+    session.execute = AsyncMock(side_effect=[sprints_result, count_result])
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_GUARD),
+        patch(_GET_SESSION, return_value=ctx),
+        patch(_SET_TENANT, new_callable=AsyncMock),
+    ):
+        result = await list_sprints(cid, SprintListFilters(status="open"))
+
+    assert all(s.sprint_status == "open" for s in result.sprints)

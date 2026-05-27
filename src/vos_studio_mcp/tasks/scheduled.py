@@ -16,6 +16,9 @@ from sqlalchemy import delete, select
 
 from db.models import Asset, BrandKit, PerformanceRecord
 from vos_studio_mcp.services.database import bypass_rls, get_session
+from vos_studio_mcp.services.library_maintenance_service import (
+    refresh_library_tiers as do_refresh_library_tiers,
+)
 from vos_studio_mcp.tasks.celery_app import celery_app
 
 log = logging.getLogger(__name__)
@@ -145,6 +148,26 @@ async def _rollup_brand_kit(brand_kit_id: uuid.UUID) -> bool:
         },
     )
     return True
+
+
+# ---------------------------------------------------------------------------
+# refresh_library_tiers
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(name="tasks.refresh_library_tiers", bind=True, max_retries=3)  # type: ignore[untyped-decorator]
+def refresh_library_tiers(self: Any) -> dict[str, int]:
+    """Recalculate avg_ctr, avg_roas, usage_count and performance_tier for all
+    non-deprecated prompt templates.
+
+    Runs daily at 03:30 UTC via Celery Beat.  Can also be triggered on-demand
+    via the refresh_library_tiers MCP tool.
+    """
+    try:
+        return asyncio.run(do_refresh_library_tiers())
+    except Exception as exc:
+        log.error("refresh_library_tiers.failed", extra={"error": str(exc)})
+        raise self.retry(exc=exc, countdown=300) from exc
 
 
 # ---------------------------------------------------------------------------

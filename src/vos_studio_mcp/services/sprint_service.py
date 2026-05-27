@@ -16,6 +16,9 @@ from vos_studio_mcp.schemas.sprint import (
     CloseSprintResponse,
     LibrarySuggestion,
     SprintInput,
+    SprintListFilters,
+    SprintListItem,
+    SprintListResponse,
     SprintPerformanceSummaryResponse,
     SprintResponse,
     SprintStatusResponse,
@@ -355,4 +358,57 @@ async def get_sprint_performance_summary(
             f"across {len(stage_summaries)} stage(s)."
         ),
         next_action="close_sprint" if has_approved else "review_asset_quality",
+    )
+
+
+async def list_sprints(
+    client_id: str,
+    filters: SprintListFilters | None = None,
+) -> SprintListResponse:
+    """List all sprints for a client, newest first, with per-sprint asset count."""
+    assert_owns_client(client_id)
+    _filters = filters or SprintListFilters()
+    async with get_session() as session:
+        await set_tenant_context(session, client_id)
+        query = (
+            select(Sprint)
+            .where(Sprint.client_id == uuid.UUID(client_id))
+            .order_by(Sprint.created_at.desc())
+            .limit(_filters.limit)
+        )
+        if _filters.status is not None:
+            query = query.where(Sprint.sprint_status == _filters.status)
+
+        result = await session.execute(query)
+        sprints = list(result.scalars().all())
+
+        counts: dict[uuid.UUID, int] = {}
+        if sprints:
+            sprint_ids = [s.id for s in sprints]
+            count_result = await session.execute(
+                select(Asset.sprint_id, func.count(Asset.id))
+                .where(Asset.sprint_id.in_(sprint_ids))
+                .group_by(Asset.sprint_id)
+            )
+            counts = {row[0]: row[1] for row in count_result.all()}
+
+    items = [
+        SprintListItem(
+            sprint_id=str(s.id),
+            product_name=s.product_name,
+            sprint_status=s.sprint_status,
+            mode=s.mode,
+            spent_usd=s.spent_usd,
+            max_spend_usd=s.max_spend_usd,
+            asset_count=counts.get(s.id, 0),
+            created_at=s.created_at.isoformat(),
+        )
+        for s in sprints
+    ]
+    return SprintListResponse(
+        status="ok",
+        client_id=client_id,
+        total=len(items),
+        sprints=items,
+        next_action="get_sprint_status" if items else "create_creative_sprint",
     )

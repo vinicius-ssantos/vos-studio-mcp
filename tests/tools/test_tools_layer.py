@@ -76,6 +76,9 @@ _EXPECTED_TOOLS = {
     "reset_circuit_breaker",
     "review_asset_quality",
     "prepare_execution_pack",
+    "list_sprints",
+    "refresh_library_tiers",
+    "get_client_performance_summary",
 }
 
 
