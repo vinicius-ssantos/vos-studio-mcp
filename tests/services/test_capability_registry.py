@@ -29,9 +29,9 @@ def test_list_capabilities_all_includes_cloudflare() -> None:
     assert "cloudflare_workers_ai" in ids
 
 
-def test_list_capabilities_all_returns_five() -> None:
+def test_list_capabilities_all_returns_six() -> None:
     caps = list_provider_capabilities(include_disabled=True)
-    assert len(caps) == 5
+    assert len(caps) == 6
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ def test_cloudflare_workers_ai_is_disabled_by_default() -> None:
 def test_get_all_provider_ids_includes_disabled() -> None:
     ids = get_all_provider_ids(include_disabled=True)
     assert "cloudflare_workers_ai" in ids
-    assert len(ids) == 5
+    assert len(ids) == 6
 
 
 def test_get_all_provider_ids_excludes_disabled_when_requested() -> None:

@@ -18,6 +18,9 @@ from vos_studio_mcp.tools.get_sprint_performance_summary import (
 )
 from vos_studio_mcp.tools.get_sprint_status import register_get_sprint_status_tools
 from vos_studio_mcp.tools.get_video_job_status import register_get_video_job_status_tools
+from vos_studio_mcp.tools.list_higgsfield_mcp_capabilities import (
+    register_list_higgsfield_mcp_capabilities_tools,
+)
 from vos_studio_mcp.tools.list_provider_capabilities import register_provider_capability_tools
 from vos_studio_mcp.tools.list_sprint_assets import register_list_sprint_assets_tools
 from vos_studio_mcp.tools.list_sprints import register_list_sprints_tools
@@ -74,3 +77,4 @@ def register_tools(mcp: FastMCP) -> None:
     register_review_asset_quality_tools(mcp)
     register_prepare_execution_pack_tools(mcp)
     register_get_client_performance_summary_tools(mcp)
+    register_list_higgsfield_mcp_capabilities_tools(mcp)

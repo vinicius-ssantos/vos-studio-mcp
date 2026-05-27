@@ -67,6 +67,22 @@ _PROVIDER_CAPABILITIES: dict[str, ProviderCapability] = {
         circuit_breaker_timeout_s=90.0,
         circuit_breaker_failure_threshold=5,
     ),
+    # Disabled by default — enable via HIGGSFIELD_MCP_ENABLED=true (ADR-0044, Issue #73)
+    "higgsfield_mcp": ProviderCapability(
+        provider_id="higgsfield_mcp",
+        display_name="Higgsfield MCP",
+        modes=["api_credits"],
+        capabilities=["image_to_video", "text_to_video", "job_status_polling"],
+        supports_webhooks=False,
+        supports_polling=True,
+        requires_api_key=False,
+        has_free_tier=False,
+        paid_side_effect_risk=True,
+        requires_human_approval_for_execution=True,
+        default_enabled=False,
+        circuit_breaker_timeout_s=120.0,
+        circuit_breaker_failure_threshold=3,
+    ),
     # Disabled by default — enable via CLOUDFLARE_WORKERS_AI_ENABLED=true (ADR-0043)
     "cloudflare_workers_ai": ProviderCapability(
         provider_id="cloudflare_workers_ai",

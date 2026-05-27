@@ -1,4 +1,4 @@
-"""Celery task — poll Higgsfield job status (ADR-0028, Issue #6 item C)."""
+"""Celery task — poll provider job status (ADR-0028, ADR-0044, Issue #6 item C)."""
 
 import asyncio
 import logging
@@ -54,7 +54,7 @@ async def _check_and_update(asset_id: str) -> str:
         if asset.generation_status in _TERMINAL_STATUSES:
             return "done"
 
-        adapter = get_adapter("higgsfield")
+        adapter = get_adapter(asset.provider or "higgsfield")
         try:
             job_status = await adapter.check_job_status(asset.provider_job_id)
         except Exception as exc:
@@ -67,6 +67,8 @@ async def _check_and_update(asset_id: str) -> str:
         if job_status.status in _RETRY_STATUSES:
             return "retry"
 
+        provider = asset.provider or "higgsfield"
+
         if job_status.status == "completed":
             asset.generation_status = "completed"
             usage_event_id = asset.provider_usage_event_id
@@ -76,22 +78,22 @@ async def _check_and_update(asset_id: str) -> str:
             await session.commit()
             log.info(
                 "generation.completed",
-                extra={"asset_id": asset_id, "job_id": asset.provider_job_id, "provider": "higgsfield"},
+                extra={"asset_id": asset_id, "job_id": asset.provider_job_id, "provider": provider},
             )
             if job_status.media_url:
                 upload_video_to_storage.delay(asset_id, job_status.media_url)
             # Fix #64: Reconcile the budget ledger by recording that the
-            # generation completed. Higgsfield does not return a billed amount,
-            # so we record 0.0 as the actual cost (meaning "completed; actual
-            # matches estimate"). record_actual_cost is best-effort and swallows
-            # any errors so it never blocks the primary workflow.
+            # generation completed. Record 0.0 as the actual cost (meaning
+            # "completed; actual matches estimate"). record_actual_cost is
+            # best-effort and swallows any errors so it never blocks the
+            # primary workflow.
             if usage_event_id is not None:
                 await record_actual_cost(str(usage_event_id), 0.0)
             await emit_audit_event(
                 action=AuditAction.POLL_JOB_COMPLETED,
                 entity_type="asset",
                 entity_id=asset_id,
-                provider="higgsfield",
+                provider=provider,
                 result=AuditResult.SUCCESS,
             )
         else:
@@ -102,7 +104,7 @@ async def _check_and_update(asset_id: str) -> str:
                 action=AuditAction.POLL_JOB_FAILED,
                 entity_type="asset",
                 entity_id=asset_id,
-                provider="higgsfield",
+                provider=provider,
                 result=AuditResult.FAILED,
                 failure_reason=job_status.error,
             )
@@ -111,7 +113,7 @@ async def _check_and_update(asset_id: str) -> str:
                 extra={
                     "asset_id": asset_id,
                     "job_id": provider_job_id,
-                    "provider": "higgsfield",
+                    "provider": provider,
                     "error_code": "provider_error",
                     "error": job_status.error,
                 },
