@@ -57,7 +57,24 @@ The tool surface shown above is a high-level summary, not a complete tool invent
 
 ---
 
-## 2. Core domain model
+## 2. Vocabulary conventions
+
+To keep the business language and the implementation language aligned, this document uses the following conventions:
+
+- **Business stage names**: Stage 0, Stage A, Stage B, Stage C, Repair, Final
+- **Internal stage identifiers**: `stage_0`, `stage_a`, `stage_b`, `stage_c`, `repair`, `final`
+- **Asset Lock**: the campaign visual system / constraint layer used by VOS; the persisted field name is `asset_lock`
+- **Operating modes**: the exact internal mode names are `dashboard_manual` and `api_credits`
+- **Delivery readiness**: business readiness for a downstream step or final handoff; distinct from provider completion and distinct from storage upload completion
+
+In other words:
+- provider completion does not always mean storage completion
+- storage completion does not always mean delivery readiness
+- the Final stage is a business-stage concept, not just a storage state
+
+---
+
+## 3. Core domain model
 
 The most important architectural change is that the domain is now more explicitly VOS-native.
 
@@ -112,7 +129,7 @@ flowchart LR
 
 ---
 
-## 3. Creative execution architecture
+## 4. Creative execution architecture
 
 The VOS workflow is now much closer to the actual production method:
 - open sprint,
@@ -175,7 +192,7 @@ flowchart TD
 
 ---
 
-## 4. API video generation flow
+## 5. API video generation flow
 
 The API-driven generation path is the most operationally sensitive workflow in the system because it combines:
 - authentication,
@@ -230,7 +247,7 @@ This is important because an asset can be generation-complete while still not fu
 
 ---
 
-## 5. Layered view
+## 6. Layered view
 
 The system can also be read as six layers.
 
@@ -316,7 +333,7 @@ flowchart LR
 
 ---
 
-## 6. Architectural summary
+## 7. Architectural summary
 
 ### What is strong now
 
@@ -344,7 +361,7 @@ flowchart LR
 
 ---
 
-## 7. Known nuances in the current `main`
+## 8. Known nuances in the current `main`
 
 This document is intended to describe the current runtime architecture accurately, but a few nuances are worth calling out explicitly:
 
@@ -356,7 +373,7 @@ These are not architecture-breakers, but they are the kinds of details that affe
 
 ---
 
-## 8. Relationship to ADRs
+## 9. Relationship to ADRs
 
 This document is descriptive.
 
