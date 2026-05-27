@@ -8,9 +8,8 @@ from vos_studio_mcp.schemas.circuit_breaker import (
     ResetCircuitBreakerResponse,
 )
 from vos_studio_mcp.services.circuit_breaker import get_breaker
+from vos_studio_mcp.services.providers.capabilities import get_all_provider_ids
 from vos_studio_mcp.tools._instrumentation import instrument
-
-_KNOWN_PROVIDERS = {"higgsfield", "freepik", "magnific", "cloudflare_workers_ai", "manual_dashboard"}
 
 
 def register_reset_circuit_breaker_tools(mcp: FastMCP) -> None:
@@ -26,7 +25,7 @@ def register_reset_circuit_breaker_tools(mcp: FastMCP) -> None:
         if client_id is None:
             raise VosError(ErrorCode.AUTH_REQUIRED, "Authentication required")
 
-        if data.provider not in _KNOWN_PROVIDERS:
+        if data.provider not in get_all_provider_ids():
             raise VosError(ErrorCode.INVALID_INPUT, f"Unknown provider: {data.provider}")
 
         breaker = get_breaker(data.provider)
