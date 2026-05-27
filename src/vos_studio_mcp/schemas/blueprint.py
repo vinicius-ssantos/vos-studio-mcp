@@ -21,9 +21,9 @@ class VideoBlueprintInput(BaseModel):
         description="Providers to include execution packs for.",
     )
     shot_count: int = Field(
-        default=3,
+        default=9,
         ge=1,
-        le=10,
+        le=15,
         description="Number of shots in the shot plan.",
     )
 

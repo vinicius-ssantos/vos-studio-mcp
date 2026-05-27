@@ -78,6 +78,10 @@ def _session_ctx(sprint: MagicMock, asset: MagicMock, video_count: int = 0) -> M
     session.get = AsyncMock(return_value=sprint)
     scalar = MagicMock()
     scalar.scalar_one = MagicMock(return_value=video_count)
+    # Fix #67: generation_service now also calls session.execute(select(Sprint).with_for_update())
+    # and calls .scalar_one_or_none() on the result.  Both scalar_one and scalar_one_or_none
+    # are handled by the same mock object returned from session.execute.
+    scalar.scalar_one_or_none = MagicMock(return_value=sprint)
     session.execute = AsyncMock(return_value=scalar)
     session.add = MagicMock()
     session.commit = AsyncMock()
@@ -105,7 +109,7 @@ async def test_request_api_video_success() -> None:
         patch(_GET_ADAPTER, return_value=adapter),
         patch(_GET_SESSION, return_value=_session_ctx(sprint, asset)),
         patch(_SET_TENANT, new_callable=AsyncMock),
-        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-001"),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="aaaaaaaa-0000-0000-0000-000000000099"),
         patch(_POLL_TASK),
     ):
         result = await request_api_video(_input())
@@ -128,7 +132,7 @@ async def test_request_api_video_updates_sprint_spent_usd() -> None:
         patch(_GET_ADAPTER, return_value=adapter),
         patch(_GET_SESSION, return_value=_session_ctx(sprint, _mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock),
-        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-001"),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="aaaaaaaa-0000-0000-0000-000000000099"),
         patch(_POLL_TASK),
     ):
         await request_api_video(_input())
@@ -235,12 +239,143 @@ async def test_max_videos_not_reached_succeeds() -> None:
         patch(_GET_ADAPTER, return_value=_mock_adapter()),
         patch(_GET_SESSION, return_value=_session_ctx(sprint, _mock_asset(), video_count=2)),
         patch(_SET_TENANT, new_callable=AsyncMock),
-        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-001"),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="aaaaaaaa-0000-0000-0000-000000000099"),
         patch(_POLL_TASK),
     ):
         result = await request_api_video(_input())
 
     assert result.status == "queued"
+
+
+# ---------------------------------------------------------------------------
+# Fix #67 — budget re-validation under SELECT FOR UPDATE in session 2
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_budget_exceeded_on_revalidation_raises() -> None:
+    """If sprint.spent_usd raced to the limit between session 1 and session 2,
+    the re-validation under the row lock must reject the submission."""
+    # Session 1: sprint appears within budget (spent=0.04, max=0.10, est=0.06 → ok).
+    # Session 2 (FOR UPDATE): another concurrent request has already incremented
+    # spent_usd to 0.07, pushing this request over the limit.
+    sprint_s1 = _mock_sprint(max_spend_usd=0.10, spent_usd=0.04)
+    sprint_s2 = _mock_sprint(max_spend_usd=0.10, spent_usd=0.07)  # concurrent write
+    asset = _mock_asset()
+    adapter = _mock_adapter(estimated_usd=0.06)
+
+    # Session 1: standard mock (get returns sprint_s1, execute returns count)
+    session1 = AsyncMock()
+    session1.get = AsyncMock(return_value=sprint_s1)
+    count_scalar = MagicMock()
+    count_scalar.scalar_one = MagicMock(return_value=0)
+    count_scalar.scalar_one_or_none = MagicMock(return_value=sprint_s1)
+    session1.execute = AsyncMock(return_value=count_scalar)
+    session1.add = MagicMock()
+    session1.commit = AsyncMock()
+    session1.refresh = AsyncMock(side_effect=lambda obj: setattr(obj, "id", asset.id))
+
+    # Session 2: FOR UPDATE returns sprint_s2 (already incremented by concurrent request)
+    session2 = AsyncMock()
+    sprint_s2_result = MagicMock()
+    sprint_s2_result.scalar_one_or_none = MagicMock(return_value=sprint_s2)
+    session2.execute = AsyncMock(return_value=sprint_s2_result)
+
+    call_count: list[int] = [0]
+
+    def _make_ctx(sess: AsyncMock) -> MagicMock:
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=sess)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    contexts = [_make_ctx(session1), _make_ctx(session2)]
+
+    def _get_session_side_effect() -> MagicMock:
+        idx = call_count[0]
+        call_count[0] += 1
+        return contexts[min(idx, len(contexts) - 1)]
+
+    with (
+        patch(_GUARD),
+        patch(_GET_ADAPTER, return_value=adapter),
+        patch(_GET_SESSION, side_effect=_get_session_side_effect),
+        patch(_SET_TENANT, new_callable=AsyncMock),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value="evt-002"),
+        pytest.raises(VosError) as exc_info,
+    ):
+        await request_api_video(_input())
+
+    assert exc_info.value.error_code == ErrorCode.BUDGET_EXCEEDED
+
+
+# ---------------------------------------------------------------------------
+# Fix #64 — provider_usage_event_id stored on asset creation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_request_api_video_stores_usage_event_id() -> None:
+    """The provider_usage_event_id returned by check_provider_budget must be
+    stored on the newly created Asset."""
+    import uuid as _uuid
+
+    sprint = _mock_sprint()
+    asset = _mock_asset()
+    adapter = _mock_adapter()
+    event_id = "aaaaaaaa-bbbb-cccc-dddd-000000000001"
+
+    created_assets: list[Any] = []
+
+    session1 = AsyncMock()
+    session1.get = AsyncMock(return_value=sprint)
+    count_scalar = MagicMock()
+    count_scalar.scalar_one = MagicMock(return_value=0)
+    count_scalar.scalar_one_or_none = MagicMock(return_value=sprint)
+    session1.execute = AsyncMock(return_value=count_scalar)
+    session1.add = MagicMock(side_effect=created_assets.append)
+    session1.commit = AsyncMock()
+    session1.refresh = AsyncMock(side_effect=lambda obj: setattr(obj, "id", asset.id))
+
+    session2 = AsyncMock()
+    sprint_result = MagicMock()
+    sprint_result.scalar_one_or_none = MagicMock(return_value=sprint)
+    session2.execute = AsyncMock(return_value=sprint_result)
+    session2.add = MagicMock(side_effect=created_assets.append)
+    session2.commit = AsyncMock()
+    session2.refresh = AsyncMock(side_effect=lambda obj: setattr(obj, "id", asset.id))
+
+    call_count: list[int] = [0]
+
+    def _make_ctx(sess: AsyncMock) -> MagicMock:
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=sess)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    contexts = [_make_ctx(session1), _make_ctx(session2)]
+
+    def _get_session_side_effect() -> MagicMock:
+        idx = call_count[0]
+        call_count[0] += 1
+        return contexts[min(idx, len(contexts) - 1)]
+
+    with (
+        patch(_GUARD),
+        patch(_GET_ADAPTER, return_value=adapter),
+        patch(_GET_SESSION, side_effect=_get_session_side_effect),
+        patch(_SET_TENANT, new_callable=AsyncMock),
+        patch(_CHECK_BUDGET, new_callable=AsyncMock, return_value=event_id),
+        patch(_POLL_TASK),
+    ):
+        await request_api_video(_input())
+
+    # The Asset passed to session.add must carry the event UUID
+    assert any(
+        hasattr(a, "provider_usage_event_id")
+        and a.provider_usage_event_id == _uuid.UUID(event_id)
+        for a in created_assets
+    )
 
 
 # ---------------------------------------------------------------------------

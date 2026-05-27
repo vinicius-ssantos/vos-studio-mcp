@@ -19,7 +19,7 @@ def test_input_defaults() -> None:
     data = VideoBlueprintInput(sprint_id="sprint-1")
     assert data.prompt_version == "v1"
     assert data.preset_version == "p1"
-    assert data.shot_count == 3
+    assert data.shot_count == 9
     assert set(data.provider_targets) == {"higgsfield", "freepik", "magnific", "manual"}
 
 
@@ -40,7 +40,7 @@ def test_input_shot_count_below_min_raises() -> None:
 
 def test_input_shot_count_above_max_raises() -> None:
     with pytest.raises(ValidationError):
-        VideoBlueprintInput(sprint_id="s", shot_count=11)
+        VideoBlueprintInput(sprint_id="s", shot_count=16)
 
 
 def test_input_empty_provider_list_raises() -> None:

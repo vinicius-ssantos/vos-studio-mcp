@@ -70,6 +70,11 @@ _EXPECTED_TOOLS = {
     "search_library",
     "set_client_webhook",
     "get_provider_usage_summary",
+    "prepare_creative_brief",
+    "generate_campaign_angles",
+    "reset_circuit_breaker",
+    "review_asset_quality",
+    "prepare_execution_pack",
 }
 
 

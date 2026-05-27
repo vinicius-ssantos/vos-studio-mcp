@@ -164,3 +164,70 @@ async def test_manual_asset_returns_list_next_action() -> None:
     assert result.generation_status == "manual"
     assert result.next_action == "list_sprint_assets"
     assert result.provider_job_id is None
+
+
+# ---------------------------------------------------------------------------
+# Fix #65 — storage-status-aware summary and next_action
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_completed_storage_pending_returns_poll_next_action() -> None:
+    """completed + storage_status=pending → still uploading, poll again."""
+    asset = _make_asset(
+        generation_status="completed",
+        storage_status="pending",
+    )
+
+    with (
+        patch(_GET_SESSION, return_value=_make_session_ctx()),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(_GUARD),
+    ):
+        result = await get_video_job_status("asset-001")
+
+    assert result.generation_status == "completed"
+    assert result.storage_status == "pending"
+    assert result.next_action == "get_video_job_status"
+    assert "upload to storage in progress" in result.summary
+
+
+@pytest.mark.asyncio
+async def test_completed_storage_failed_returns_poll_next_action() -> None:
+    """completed + storage_status=failed → upload failed, poll again."""
+    asset = _make_asset(
+        generation_status="completed",
+        storage_status="failed",
+    )
+
+    with (
+        patch(_GET_SESSION, return_value=_make_session_ctx()),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(_GUARD),
+    ):
+        result = await get_video_job_status("asset-001")
+
+    assert result.generation_status == "completed"
+    assert result.storage_status == "failed"
+    assert result.next_action == "get_video_job_status"
+    assert "storage upload failed" in result.summary
+
+
+@pytest.mark.asyncio
+async def test_completed_stored_returns_prepare_dashboard_pack() -> None:
+    """completed + storage_status=stored → ready, move to pack prep."""
+    asset = _make_asset(
+        generation_status="completed",
+        storage_status="stored",
+        storage_url="https://r2.example.com/v.mp4",
+    )
+
+    with (
+        patch(_GET_SESSION, return_value=_make_session_ctx()),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(_GUARD),
+    ):
+        result = await get_video_job_status("asset-001")
+
+    assert result.next_action == "prepare_dashboard_pack"
+    assert "ready in storage" in result.summary

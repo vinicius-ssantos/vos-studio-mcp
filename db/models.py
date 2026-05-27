@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, MetaData, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, MetaData, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -58,6 +58,8 @@ class BrandKit(Base):
     performance_memory: Mapped[dict[str, object]] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+    # Campaign visual system v2 — Asset Lock (Issue #56)
+    asset_lock: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -128,6 +130,17 @@ class Asset(Base):
     provider_job_id: Mapped[str | None] = mapped_column(String(120), index=True)
     generation_status: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
     storage_status: Mapped[str] = mapped_column(String(20), nullable=False, default="not_required")
+    provider_usage_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    # Stage / lineage metadata (Issue #53)
+    asset_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    asset_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    source_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_as_reference: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_final_delivery: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

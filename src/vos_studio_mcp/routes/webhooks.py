@@ -11,11 +11,19 @@ from db.models import Asset
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import bypass_rls, get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
+from vos_studio_mcp.tasks.upload_image import upload_image_to_storage
 from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks")
+
+# Provider media type mapping — determines which upload task to use
+_PROVIDER_MEDIA_TYPE: dict[str, str] = {
+    "higgsfield": "video",
+    "freepik": "image",
+    "magnific": "image",
+}
 
 _STATUS_MAP: dict[str, Literal["pending", "processing", "completed", "failed"]] = {
     # uppercase variants (Higgsfield, Freepik)
@@ -110,7 +118,11 @@ async def _process_provider_webhook(
     )
 
     if mapped_status == "completed" and media_url:
-        upload_video_to_storage.delay(str(asset_id), media_url)
+        media_type = _PROVIDER_MEDIA_TYPE.get(provider, "video")
+        if media_type == "image":
+            upload_image_to_storage.delay(str(asset_id), media_url)
+        else:
+            upload_video_to_storage.delay(str(asset_id), media_url)
 
     return {"received": True}
 

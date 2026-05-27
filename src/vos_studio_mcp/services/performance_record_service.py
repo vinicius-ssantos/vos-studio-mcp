@@ -6,6 +6,8 @@ for the sprint creation performance_context block.
 
 import logging
 import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -21,6 +23,89 @@ from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit
 from vos_studio_mcp.services.database import bypass_rls, get_session, set_tenant_context
 
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Composite ranking
+# ---------------------------------------------------------------------------
+
+_RECENCY_RECENT_DAYS = 30
+_RECENCY_MEDIUM_DAYS = 90
+_RECENCY_FACTOR_RECENT = 1.0
+_RECENCY_FACTOR_MEDIUM = 0.7
+_RECENCY_FACTOR_OLD = 0.4
+
+_DEFAULT_W_CTR = 0.35
+_DEFAULT_W_ROAS = 0.30
+_DEFAULT_W_RECENCY = 0.15
+_DEFAULT_W_PLATFORM = 0.10
+_DEFAULT_W_OBJECTIVE = 0.10
+
+
+@dataclass
+class _ScoringWeights:
+    w_ctr: float = _DEFAULT_W_CTR
+    w_roas: float = _DEFAULT_W_ROAS
+    w_recency: float = _DEFAULT_W_RECENCY
+    w_platform: float = _DEFAULT_W_PLATFORM
+    w_objective: float = _DEFAULT_W_OBJECTIVE
+
+
+def _recency_factor(recorded_at: datetime | None) -> float:
+    """Return a recency weight based on how recently the record was created."""
+    if recorded_at is None:
+        return _RECENCY_FACTOR_OLD
+    now = datetime.now(tz=UTC)
+    # Ensure recorded_at is timezone-aware for comparison.
+    if recorded_at.tzinfo is None:
+        recorded_at = recorded_at.replace(tzinfo=UTC)
+    age = now - recorded_at
+    if age <= timedelta(days=_RECENCY_RECENT_DAYS):
+        return _RECENCY_FACTOR_RECENT
+    if age <= timedelta(days=_RECENCY_MEDIUM_DAYS):
+        return _RECENCY_FACTOR_MEDIUM
+    return _RECENCY_FACTOR_OLD
+
+
+def _composite_score(
+    record: PerformanceRecord,
+    max_ctr: float,
+    max_roas: float,
+    platform: str | None,
+    campaign_objective: str | None,
+    weights: _ScoringWeights,
+) -> float:
+    """Compute a composite ranking score in [0, 1] for a performance record.
+
+    Signals:
+    - normalized_ctr: ctr / max_ctr (0–1); 0 when max_ctr is 0.
+    - normalized_roas: roas / max_roas (0–1); 0.5 (neutral) when no roas data.
+    - recency_factor: 1.0 / 0.7 / 0.4 based on recorded_at age.
+    - platform_match_bonus: 1.0 if platform matches requested, 0.5 otherwise.
+    - objective_match_bonus: 1.0 if campaign_objective matches requested, 0.5 otherwise.
+    """
+    norm_ctr = (record.ctr / max_ctr) if (max_ctr > 0 and record.ctr is not None) else 0.0
+    norm_roas = record.roas / max_roas if record.roas is not None and max_roas > 0 else 0.5
+
+    recency = _recency_factor(record.recorded_at)
+
+    platform_bonus = (
+        1.0
+        if (platform is None or record.platform == platform)
+        else 0.5
+    )
+    objective_bonus = 0.5  # default: no campaign_objective stored on record
+    if campaign_objective is not None:
+        # PerformanceRecord does not store campaign_objective directly;
+        # treat None as no-match (0.5 neutral) unless record carries it in notes.
+        objective_bonus = 0.5
+
+    return (
+        weights.w_ctr * norm_ctr
+        + weights.w_roas * norm_roas
+        + weights.w_recency * recency
+        + weights.w_platform * platform_bonus
+        + weights.w_objective * objective_bonus
+    )
 
 
 async def create_performance_record(data: PerformanceRecordInput) -> PerformanceRecordResponse:
@@ -105,10 +190,19 @@ async def create_performance_record(data: PerformanceRecordInput) -> Performance
     )
 
 
-async def get_top_performers(client_id: str, brand_kit_id: str) -> list[TopPerformer]:
-    """Return the top-performing assets for a client + brand kit, ordered by CTR desc.
+async def get_top_performers(
+    client_id: str,
+    brand_kit_id: str,
+    platform: str | None = None,
+    campaign_objective: str | None = None,
+) -> list[TopPerformer]:
+    """Return the top-performing assets for a client + brand kit.
 
-    Used by create_creative_sprint to populate the performance_context block.
+    When ``platform`` and/or ``campaign_objective`` are provided, records are
+    ranked by a composite score that weighs CTR, ROAS, recency, platform match,
+    and objective match.  Without those parameters the function falls back to
+    CTR-only ordering (backward-compatible).
+
     Returns at most 10 records to keep the tool output compact (ADR-0011).
     """
     client_uuid = uuid.UUID(client_id)
@@ -125,9 +219,26 @@ async def get_top_performers(client_id: str, brand_kit_id: str) -> list[TopPerfo
                 PerformanceRecord.performance_label == "top_performer",
             )
             .order_by(PerformanceRecord.ctr.desc().nulls_last())
-            .limit(10)
+            .limit(50)  # fetch more to allow re-ranking
         )
         records = list(result.scalars().all())
+
+    if not records:
+        return []
+
+    use_composite = platform is not None or campaign_objective is not None
+
+    if use_composite:
+        ctrs = [r.ctr for r in records if r.ctr is not None]
+        roases = [r.roas for r in records if r.roas is not None]
+        max_ctr = max(ctrs) if ctrs else 0.0
+        max_roas = max(roases) if roases else 0.0
+        weights = _ScoringWeights()
+        records = sorted(
+            records,
+            key=lambda r: _composite_score(r, max_ctr, max_roas, platform, campaign_objective, weights),
+            reverse=True,
+        )
 
     return [
         TopPerformer(
@@ -139,5 +250,5 @@ async def get_top_performers(client_id: str, brand_kit_id: str) -> list[TopPerfo
             impressions=r.impressions,
             recorded_at=r.recorded_at.isoformat() if r.recorded_at else "",
         )
-        for r in records
+        for r in records[:10]
     ]

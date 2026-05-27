@@ -28,6 +28,15 @@ async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) 
     )
 
     if not auth_required:
+        if settings.is_production:
+            log.error(
+                "auth.not_configured_in_production",
+                extra={"path": path},
+            )
+            return JSONResponse(
+                {"error": "service_unavailable", "detail": "Authentication not configured"},
+                status_code=503,
+            )
         log.warning("auth_disabled — no OAUTH_ISSUER_URL, SUPABASE_JWT_SECRET, or DEV_BEARER_TOKEN configured")
         return await call_next(request)
 

@@ -6,6 +6,7 @@ from vos_studio_mcp.tools.close_sprint import register_close_sprint_tools
 from vos_studio_mcp.tools.conclude_variant_test import register_conclude_variant_test_tools
 from vos_studio_mcp.tools.create_client import register_create_client_tools
 from vos_studio_mcp.tools.create_creative_sprint import register_create_sprint_tools
+from vos_studio_mcp.tools.generate_campaign_angles import register_generate_campaign_angles_tools
 from vos_studio_mcp.tools.get_provider_usage_summary import (
     register_get_provider_usage_summary_tools,
 )
@@ -14,7 +15,9 @@ from vos_studio_mcp.tools.get_video_job_status import register_get_video_job_sta
 from vos_studio_mcp.tools.list_provider_capabilities import register_provider_capability_tools
 from vos_studio_mcp.tools.list_sprint_assets import register_list_sprint_assets_tools
 from vos_studio_mcp.tools.list_video_jobs import register_list_video_jobs_tools
+from vos_studio_mcp.tools.prepare_creative_brief import register_prepare_creative_brief_tools
 from vos_studio_mcp.tools.prepare_dashboard_pack import register_prepare_dashboard_pack_tools
+from vos_studio_mcp.tools.prepare_execution_pack import register_prepare_execution_pack_tools
 from vos_studio_mcp.tools.prepare_video_blueprint import register_prepare_video_blueprint_tools
 from vos_studio_mcp.tools.promote_to_library import register_promote_to_library_tools
 from vos_studio_mcp.tools.record_asset_performance import register_record_asset_performance_tools
@@ -23,6 +26,8 @@ from vos_studio_mcp.tools.record_performance_metrics import (
 )
 from vos_studio_mcp.tools.register_manual_asset import register_manual_asset_tools
 from vos_studio_mcp.tools.request_api_video import register_request_api_video_tools
+from vos_studio_mcp.tools.reset_circuit_breaker import register_reset_circuit_breaker_tools
+from vos_studio_mcp.tools.review_asset_quality import register_review_asset_quality_tools
 from vos_studio_mcp.tools.save_brand_kit import register_save_brand_kit_tools
 from vos_studio_mcp.tools.search_library import register_search_library_tools
 from vos_studio_mcp.tools.set_client_webhook import register_set_client_webhook_tools
@@ -52,3 +57,8 @@ def register_tools(mcp: FastMCP) -> None:
     register_record_performance_metrics_tools(mcp)
     register_set_client_webhook_tools(mcp)
     register_get_provider_usage_summary_tools(mcp)
+    register_prepare_creative_brief_tools(mcp)
+    register_generate_campaign_angles_tools(mcp)
+    register_reset_circuit_breaker_tools(mcp)
+    register_review_asset_quality_tools(mcp)
+    register_prepare_execution_pack_tools(mcp)

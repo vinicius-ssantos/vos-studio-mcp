@@ -7,6 +7,7 @@ from typing import Any
 from celery.exceptions import MaxRetriesExceededError
 
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
+from vos_studio_mcp.services.budget_guard import record_actual_cost
 from vos_studio_mcp.services.database import (
     get_asset_notification_context,
     get_asset_with_client,
@@ -68,6 +69,7 @@ async def _check_and_update(asset_id: str) -> str:
 
         if job_status.status == "completed":
             asset.generation_status = "completed"
+            usage_event_id = asset.provider_usage_event_id
             if job_status.media_url:
                 # Mark upload as pending; the task will write storage_url + 'stored'
                 asset.storage_status = "pending"
@@ -78,6 +80,13 @@ async def _check_and_update(asset_id: str) -> str:
             )
             if job_status.media_url:
                 upload_video_to_storage.delay(asset_id, job_status.media_url)
+            # Fix #64: Reconcile the budget ledger by recording that the
+            # generation completed. Higgsfield does not return a billed amount,
+            # so we record 0.0 as the actual cost (meaning "completed; actual
+            # matches estimate"). record_actual_cost is best-effort and swallows
+            # any errors so it never blocks the primary workflow.
+            if usage_event_id is not None:
+                await record_actual_cost(str(usage_event_id), 0.0)
             await emit_audit_event(
                 action=AuditAction.POLL_JOB_COMPLETED,
                 entity_type="asset",
