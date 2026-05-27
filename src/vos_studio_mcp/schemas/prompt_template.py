@@ -12,6 +12,13 @@ class PromoteToLibraryInput(BaseModel):
     format: list[str] = Field(default_factory=list)
     objective: list[str] = Field(default_factory=list)
     platform: list[str] = Field(default_factory=list)
+    asset_stage: list[str] = Field(
+        default_factory=list,
+        description=(
+            "VOS production stages this template is suited for "
+            "(e.g. stage_a, stage_c, final). Leave empty if stage-agnostic."
+        ),
+    )
     prompt_template: str = Field(
         ...,
         min_length=1,
@@ -54,6 +61,13 @@ class SearchLibraryInput(BaseModel):
     format: list[str] = Field(default_factory=list)
     objective: list[str] = Field(default_factory=list)
     platform: list[str] = Field(default_factory=list)
+    asset_stage: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Filter by VOS production stage tag (e.g. stage_c, final). "
+            "Returns templates tagged for the requested stage(s) or stage-agnostic templates."
+        ),
+    )
     min_tier: str | None = Field(
         default=None,
         description="Minimum performance tier: 'experimental', 'tested', or 'top_performer'",
@@ -68,10 +82,14 @@ class SearchLibraryInput(BaseModel):
             or self.format
             or self.objective
             or self.platform
+            or self.asset_stage
             or self.min_tier is not None
         )
         if not has_filter:
-            raise ValueError("At least one filter (query, industry, format, objective, platform, or min_tier) is required")
+            raise ValueError(
+                "At least one filter (query, industry, format, objective, platform, "
+                "asset_stage, or min_tier) is required"
+            )
         return self
 
 
@@ -86,6 +104,7 @@ class SearchLibraryResult(BaseModel):
     format: list[str]
     objective: list[str]
     platform: list[str]
+    asset_stage: list[str]
     prompt_preview: str  # first 300 chars of anonymized template
 
 

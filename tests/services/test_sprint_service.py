@@ -101,17 +101,50 @@ def _brand_kit_ctx(brand_kit: object = None) -> MagicMock:
     return ctx
 
 
-def _sprint_ctx(sprint: object = None, asset_count: int = 0, new_id: uuid.UUID | None = None) -> MagicMock:
+def _sprint_ctx(
+    sprint: object = None,
+    asset_count: int = 0,
+    new_id: uuid.UUID | None = None,
+    has_final_approved: bool = True,
+) -> MagicMock:
     _new_id = new_id or uuid.uuid4()
     session = AsyncMock()
     session.get = AsyncMock(return_value=sprint)
-    scalar_result = MagicMock()
-    scalar_result.scalar_one = MagicMock(return_value=asset_count)
-    session.execute = AsyncMock(return_value=scalar_result)
+
+    # execute() is used for both asset_count (scalar_one) and final-asset guard (scalars().first())
+    scalar_count_result = MagicMock()
+    scalar_count_result.scalar_one = MagicMock(return_value=asset_count)
+
+    final_asset_result = MagicMock()
+    approved_asset = MagicMock() if has_final_approved else None
+    final_asset_result.scalars.return_value.first.return_value = approved_asset
+
+    # Return different mock on each call: first call → scalar count, second → final asset check
+    session.execute = AsyncMock(side_effect=[scalar_count_result, final_asset_result])
     session.add = MagicMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
     session.refresh = AsyncMock(side_effect=lambda obj: setattr(obj, "id", _new_id))
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return ctx
+
+
+def _close_sprint_ctx(
+    sprint: object = None,
+    has_final_approved: bool = True,
+) -> MagicMock:
+    """Minimal context for close_sprint — only needs get + execute."""
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=sprint)
+
+    final_asset_result = MagicMock()
+    approved_asset = MagicMock() if has_final_approved else None
+    final_asset_result.scalars.return_value.first.return_value = approved_asset
+    session.execute = AsyncMock(return_value=final_asset_result)
+    session.commit = AsyncMock()
 
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=session)
@@ -287,7 +320,7 @@ async def test_close_sprint_success() -> None:
     from vos_studio_mcp.services.sprint_service import close_sprint
 
     sprint = _mock_sprint_orm(sprint_status="open")
-    ctx = _sprint_ctx(sprint=sprint)
+    ctx = _close_sprint_ctx(sprint=sprint, has_final_approved=True)
 
     with patch(_GET_SESSION, return_value=ctx):
         result = await close_sprint(CloseSprintInput(sprint_id=str(uuid.uuid4())))
@@ -303,7 +336,7 @@ async def test_close_sprint_not_found() -> None:
     from vos_studio_mcp.schemas.sprint import CloseSprintInput
     from vos_studio_mcp.services.sprint_service import close_sprint
 
-    ctx = _sprint_ctx(sprint=None)
+    ctx = _close_sprint_ctx(sprint=None)
 
     with patch(_GET_SESSION, return_value=ctx), pytest.raises(VosError) as exc:
         await close_sprint(CloseSprintInput(sprint_id=str(uuid.uuid4())))
@@ -318,9 +351,226 @@ async def test_close_sprint_already_closed() -> None:
     from vos_studio_mcp.services.sprint_service import close_sprint
 
     sprint = _mock_sprint_orm(sprint_status="closed")
-    ctx = _sprint_ctx(sprint=sprint)
+    ctx = _close_sprint_ctx(sprint=sprint)
 
     with patch(_GET_SESSION, return_value=ctx), pytest.raises(VosError) as exc:
         await close_sprint(CloseSprintInput(sprint_id=str(uuid.uuid4())))
 
     assert exc.value.error_code == ErrorCode.INVALID_INPUT
+
+
+@pytest.mark.asyncio
+async def test_close_sprint_requires_final_approved_asset() -> None:
+    """close_sprint should raise VALIDATION_ERROR when no approved final-delivery asset exists."""
+    from vos_studio_mcp.errors import ErrorCode, VosError
+    from vos_studio_mcp.schemas.sprint import CloseSprintInput
+    from vos_studio_mcp.services.sprint_service import close_sprint
+
+    sprint = _mock_sprint_orm(sprint_status="open")
+    ctx = _close_sprint_ctx(sprint=sprint, has_final_approved=False)
+
+    with patch(_GET_SESSION, return_value=ctx), pytest.raises(VosError) as exc:
+        await close_sprint(CloseSprintInput(sprint_id=str(uuid.uuid4())))
+
+    assert exc.value.error_code == ErrorCode.VALIDATION_ERROR
+    assert "final delivery" in exc.value.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_close_sprint_force_bypasses_validation() -> None:
+    """close_sprint with force=True should succeed even without an approved delivery asset."""
+    from vos_studio_mcp.schemas.sprint import CloseSprintInput
+    from vos_studio_mcp.services.sprint_service import close_sprint
+
+    sprint = _mock_sprint_orm(sprint_status="open")
+    # no approved asset but force=True
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=sprint)
+    session.commit = AsyncMock()
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await close_sprint(CloseSprintInput(sprint_id=str(uuid.uuid4()), force=True))
+
+    assert result.status == "closed"
+    # execute should NOT have been called (no validation query)
+    session.execute.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# get_sprint_performance_summary tests
+# ---------------------------------------------------------------------------
+
+
+def _make_asset_mock(
+    asset_stage: str | None = None,
+    qa_status: str | None = None,
+    performance_score: int | None = None,
+) -> MagicMock:
+    a = MagicMock()
+    a.asset_stage = asset_stage
+    a.qa_status = qa_status
+    a.performance_score = performance_score
+    return a
+
+
+@pytest.mark.asyncio
+async def test_get_sprint_performance_summary_groups_by_stage() -> None:
+    from vos_studio_mcp.services.sprint_service import get_sprint_performance_summary
+
+    sprint = _mock_sprint_orm()
+    assets = [
+        _make_asset_mock("stage_c", "approved", 4),
+        _make_asset_mock("stage_c", "needs_repair", None),
+        _make_asset_mock("final", "approved", 5),
+    ]
+
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=sprint)
+    scalars_result = MagicMock()
+    scalars_result.scalars.return_value.all.return_value = assets
+    session.execute = AsyncMock(return_value=scalars_result)
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await get_sprint_performance_summary(str(uuid.uuid4()))
+
+    assert result.status == "ok"
+    assert result.total_assets == 3
+    assert len(result.by_stage) == 2
+    stage_map = {s.asset_stage: s for s in result.by_stage}
+    assert stage_map["stage_c"].approved_count == 1
+    assert stage_map["stage_c"].needs_repair_count == 1
+    assert stage_map["stage_c"].avg_performance_score == 4.0
+    assert stage_map["final"].approved_count == 1
+    assert stage_map["final"].avg_performance_score == 5.0
+
+
+@pytest.mark.asyncio
+async def test_get_sprint_performance_summary_not_found() -> None:
+    from vos_studio_mcp.errors import ErrorCode, VosError
+    from vos_studio_mcp.services.sprint_service import get_sprint_performance_summary
+
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=None)
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(_GET_SESSION, return_value=ctx), pytest.raises(VosError) as exc:
+        await get_sprint_performance_summary(str(uuid.uuid4()))
+
+    assert exc.value.error_code == ErrorCode.NOT_FOUND
+
+
+# ---------------------------------------------------------------------------
+# list_sprints tests
+# ---------------------------------------------------------------------------
+
+
+def _make_sprint_orm_with_date(**kwargs: object) -> MagicMock:
+    import datetime as dt
+    s = _mock_sprint_orm(**kwargs)
+    s.created_at = dt.datetime(2026, 5, 1, tzinfo=dt.UTC)
+    return s
+
+
+@pytest.mark.asyncio
+async def test_list_sprints_returns_items() -> None:
+    from vos_studio_mcp.services.sprint_service import list_sprints
+
+    cid = "00000000-0000-0000-0000-000000000001"
+    sprint = _make_sprint_orm_with_date(product_name="Product A")
+    sprint.id = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000001")
+
+    session = AsyncMock()
+    session.get = AsyncMock()
+
+    # First execute → sprints list
+    sprints_result = MagicMock()
+    sprints_result.scalars.return_value.all.return_value = [sprint]
+
+    # Second execute → asset counts
+    count_result = MagicMock()
+    count_result.all.return_value = [(sprint.id, 3)]
+
+    session.execute = AsyncMock(side_effect=[sprints_result, count_result])
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_GUARD),
+        patch(_GET_SESSION, return_value=ctx),
+        patch(_SET_TENANT, new_callable=AsyncMock),
+    ):
+        result = await list_sprints(cid)
+
+    assert result.status == "ok"
+    assert result.total == 1
+    assert result.sprints[0].product_name == "Product A"
+    assert result.sprints[0].asset_count == 3
+    assert result.next_action == "get_sprint_status"
+
+
+@pytest.mark.asyncio
+async def test_list_sprints_empty_returns_create_action() -> None:
+    from vos_studio_mcp.services.sprint_service import list_sprints
+
+    cid = "00000000-0000-0000-0000-000000000001"
+
+    session = AsyncMock()
+    sprints_result = MagicMock()
+    sprints_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=sprints_result)
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_GUARD),
+        patch(_GET_SESSION, return_value=ctx),
+        patch(_SET_TENANT, new_callable=AsyncMock),
+    ):
+        result = await list_sprints(cid)
+
+    assert result.total == 0
+    assert result.next_action == "create_creative_sprint"
+
+
+@pytest.mark.asyncio
+async def test_list_sprints_status_filter_passed() -> None:
+    """When filters.status='open' is passed the result only contains open sprints."""
+    from vos_studio_mcp.schemas.sprint import SprintListFilters
+    from vos_studio_mcp.services.sprint_service import list_sprints
+
+    cid = "00000000-0000-0000-0000-000000000001"
+    open_sprint = _make_sprint_orm_with_date(sprint_status="open")
+    open_sprint.id = uuid.UUID("bbbbbbbb-0000-0000-0000-000000000001")
+
+    session = AsyncMock()
+    sprints_result = MagicMock()
+    sprints_result.scalars.return_value.all.return_value = [open_sprint]
+    count_result = MagicMock()
+    count_result.all.return_value = [(open_sprint.id, 0)]
+    session.execute = AsyncMock(side_effect=[sprints_result, count_result])
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_GUARD),
+        patch(_GET_SESSION, return_value=ctx),
+        patch(_SET_TENANT, new_callable=AsyncMock),
+    ):
+        result = await list_sprints(cid, SprintListFilters(status="open"))
+
+    assert all(s.sprint_status == "open" for s in result.sprints)

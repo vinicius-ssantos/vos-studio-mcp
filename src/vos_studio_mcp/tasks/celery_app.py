@@ -24,6 +24,11 @@ celery_app.conf.beat_schedule = {
         "task": "tasks.rollup_performance_memory",
         "schedule": crontab(hour=3, minute=0),
     },
+    # Daily at 03:30 UTC — recalculate prompt template performance tiers
+    "refresh-library-tiers-daily": {
+        "task": "tasks.refresh_library_tiers",
+        "schedule": crontab(hour=3, minute=30),
+    },
     # Weekly on Sunday at 04:00 UTC — remove stale failed API-generated assets
     "cleanup-stale-jobs-weekly": {
         "task": "tasks.cleanup_stale_jobs",

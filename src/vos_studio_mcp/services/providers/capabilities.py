@@ -33,6 +33,9 @@ _PROVIDER_CAPABILITIES: dict[str, ProviderCapability] = {
         paid_side_effect_risk=True,
         requires_human_approval_for_execution=True,
         default_enabled=True,
+        # Video jobs are slower — allow a longer recovery window before re-trying
+        circuit_breaker_timeout_s=120.0,
+        circuit_breaker_failure_threshold=3,
     ),
     "freepik": ProviderCapability(
         provider_id="freepik",
@@ -46,6 +49,8 @@ _PROVIDER_CAPABILITIES: dict[str, ProviderCapability] = {
         paid_side_effect_risk=True,
         requires_human_approval_for_execution=True,
         default_enabled=True,
+        circuit_breaker_timeout_s=90.0,
+        circuit_breaker_failure_threshold=5,
     ),
     "magnific": ProviderCapability(
         provider_id="magnific",
@@ -59,6 +64,8 @@ _PROVIDER_CAPABILITIES: dict[str, ProviderCapability] = {
         paid_side_effect_risk=True,
         requires_human_approval_for_execution=True,
         default_enabled=True,
+        circuit_breaker_timeout_s=90.0,
+        circuit_breaker_failure_threshold=5,
     ),
     # Disabled by default — enable via CLOUDFLARE_WORKERS_AI_ENABLED=true (ADR-0043)
     "cloudflare_workers_ai": ProviderCapability(

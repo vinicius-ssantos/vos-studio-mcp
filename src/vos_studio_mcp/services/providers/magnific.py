@@ -17,6 +17,7 @@ from vos_studio_mcp.services.providers.base import (
     JobStatus,
     ManualPack,
 )
+from vos_studio_mcp.services.providers.capabilities import get_provider_capability
 
 log = logging.getLogger(__name__)
 
@@ -74,7 +75,12 @@ class MagnificAdapter:
             extra={"sprint_id": params.sprint_id, "scale": scale},
         )
 
-        breaker = get_breaker("magnific")
+        _cap = get_provider_capability("magnific")
+        breaker = get_breaker(
+            "magnific",
+            failure_threshold=_cap.circuit_breaker_failure_threshold,
+            recovery_timeout=_cap.circuit_breaker_timeout_s,
+        )
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await breaker.execute(
                 client.post(
@@ -113,7 +119,12 @@ class MagnificAdapter:
         if not get_settings().magnific_api_key:
             raise VosError(ErrorCode.PROVIDER_ERROR, "MAGNIFIC_API_KEY is not configured")
 
-        breaker = get_breaker("magnific")
+        _cap = get_provider_capability("magnific")
+        breaker = get_breaker(
+            "magnific",
+            failure_threshold=_cap.circuit_breaker_failure_threshold,
+            recovery_timeout=_cap.circuit_breaker_timeout_s,
+        )
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await breaker.execute(
                 client.get(

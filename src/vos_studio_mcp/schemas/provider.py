@@ -37,6 +37,15 @@ class ProviderCapability(BaseModel):
     paid_side_effect_risk: bool = False
     requires_human_approval_for_execution: bool = False
     default_enabled: bool = True
+    # Circuit breaker configuration (configurable per provider)
+    circuit_breaker_timeout_s: float = Field(
+        default=60.0,
+        description="Seconds before a tripped circuit breaker enters half-open state.",
+    )
+    circuit_breaker_failure_threshold: int = Field(
+        default=5,
+        description="Consecutive failures before the circuit breaker opens.",
+    )
 
 
 class ProviderCapabilitiesResponse(BaseModel):

@@ -7,13 +7,20 @@ from vos_studio_mcp.tools.conclude_variant_test import register_conclude_variant
 from vos_studio_mcp.tools.create_client import register_create_client_tools
 from vos_studio_mcp.tools.create_creative_sprint import register_create_sprint_tools
 from vos_studio_mcp.tools.generate_campaign_angles import register_generate_campaign_angles_tools
+from vos_studio_mcp.tools.get_client_performance_summary import (
+    register_get_client_performance_summary_tools,
+)
 from vos_studio_mcp.tools.get_provider_usage_summary import (
     register_get_provider_usage_summary_tools,
+)
+from vos_studio_mcp.tools.get_sprint_performance_summary import (
+    register_get_sprint_performance_summary_tools,
 )
 from vos_studio_mcp.tools.get_sprint_status import register_get_sprint_status_tools
 from vos_studio_mcp.tools.get_video_job_status import register_get_video_job_status_tools
 from vos_studio_mcp.tools.list_provider_capabilities import register_provider_capability_tools
 from vos_studio_mcp.tools.list_sprint_assets import register_list_sprint_assets_tools
+from vos_studio_mcp.tools.list_sprints import register_list_sprints_tools
 from vos_studio_mcp.tools.list_video_jobs import register_list_video_jobs_tools
 from vos_studio_mcp.tools.prepare_creative_brief import register_prepare_creative_brief_tools
 from vos_studio_mcp.tools.prepare_dashboard_pack import register_prepare_dashboard_pack_tools
@@ -24,6 +31,7 @@ from vos_studio_mcp.tools.record_asset_performance import register_record_asset_
 from vos_studio_mcp.tools.record_performance_metrics import (
     register_record_performance_metrics_tools,
 )
+from vos_studio_mcp.tools.refresh_library_tiers import register_refresh_library_tiers_tools
 from vos_studio_mcp.tools.register_manual_asset import register_manual_asset_tools
 from vos_studio_mcp.tools.request_api_video import register_request_api_video_tools
 from vos_studio_mcp.tools.reset_circuit_breaker import register_reset_circuit_breaker_tools
@@ -43,6 +51,7 @@ def register_tools(mcp: FastMCP) -> None:
     register_get_sprint_status_tools(mcp)
     register_prepare_dashboard_pack_tools(mcp)
     register_list_sprint_assets_tools(mcp)
+    register_list_sprints_tools(mcp)
     register_manual_asset_tools(mcp)
     register_close_sprint_tools(mcp)
     register_record_asset_performance_tools(mcp)
@@ -57,8 +66,11 @@ def register_tools(mcp: FastMCP) -> None:
     register_record_performance_metrics_tools(mcp)
     register_set_client_webhook_tools(mcp)
     register_get_provider_usage_summary_tools(mcp)
+    register_get_sprint_performance_summary_tools(mcp)
     register_prepare_creative_brief_tools(mcp)
     register_generate_campaign_angles_tools(mcp)
+    register_refresh_library_tiers_tools(mcp)
     register_reset_circuit_breaker_tools(mcp)
     register_review_asset_quality_tools(mcp)
     register_prepare_execution_pack_tools(mcp)
+    register_get_client_performance_summary_tools(mcp)
