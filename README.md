@@ -30,6 +30,23 @@ The system should make creative production faster, more consistent, easier to au
 
 ---
 
+## Vocabulary conventions
+
+To keep the business language and the implementation language aligned, this repository uses the following conventions:
+
+- **Business stage names**: Stage 0, Stage A, Stage B, Stage C, Repair, Final
+- **Internal stage identifiers**: `stage_0`, `stage_a`, `stage_b`, `stage_c`, `repair`, `final`
+- **Asset Lock**: the campaign visual system / constraint layer used by VOS; the persisted field name is `asset_lock`
+- **Operating modes**: use the exact internal mode names `dashboard_manual` and `api_credits`
+- **Delivery readiness**: business readiness for a downstream step or final handoff; this is distinct from provider generation completion and distinct from storage upload completion
+
+In other words:
+- "generation completed" does not always mean "stored"
+- "stored" does not always mean "delivery-ready"
+- "Final" is the business stage for the delivery asset, not just a storage state
+
+---
+
 ## What this server is responsible for
 
 The MCP server is responsible for orchestrating the creative workflow, not for replacing every creative or production decision.
@@ -81,7 +98,7 @@ The project is no longer just a foundation skeleton. It now includes a more expl
 - stage-aware assets with lineage and delivery/reference semantics
 - BrandKit Asset Lock / campaign visual system support
 - VOS 9-shot blueprint generation
-- stage-aware execution packs for Stage 0 / A / B / C / repair / final
+- stage-aware execution packs for Stage 0 / A / B / C / Repair / Final
 - API-driven video generation with async polling and storage upload
 - QA review workflow with repair routing
 - provider usage tracking, budget checks, and audit logging
