@@ -340,6 +340,8 @@ Current ADRs:
 - ADR-0029 — Cross-client prompt library
 - ADR-0030 — Observability and failure diagnostics
 
+Architecture overview and diagrams are documented in [`docs/architecture/project-architecture.md`](docs/architecture/project-architecture.md).
+
 Future implementation work should read the ADRs before making architectural changes.
 
 ---
