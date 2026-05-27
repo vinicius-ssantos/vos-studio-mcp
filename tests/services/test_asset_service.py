@@ -150,3 +150,85 @@ async def test_list_sprint_assets_returns_items() -> None:
     assert result.assets[0].asset_id == str(asset1.id)
     assert result.assets[0].provider == "manual_dashboard"
     assert result.assets[0].width == 1920
+
+
+# ---------------------------------------------------------------------------
+# list_sprint_assets — filters
+# ---------------------------------------------------------------------------
+
+
+def _mock_asset_full(
+    asset_stage: str | None = None,
+    qa_status: str | None = None,
+) -> MagicMock:
+    a = MagicMock()
+    a.id = uuid.uuid4()
+    a.provider = "manual_dashboard"
+    a.prompt_version = "v1"
+    a.preset_version = "p1"
+    a.storage_url = "https://cdn.example.com/a.mp4"
+    a.preview_url = None
+    a.width = 1920
+    a.height = 1080
+    a.format = "mp4"
+    a.created_at = None
+    a.asset_stage = asset_stage
+    a.asset_kind = "manual"
+    a.source_asset_id = None
+    a.approved_as_reference = False
+    a.is_final_delivery = False
+    a.generation_status = "manual"
+    a.storage_status = "not_required"
+    a.qa_status = qa_status
+    return a
+
+
+@pytest.mark.asyncio
+async def test_list_sprint_assets_filter_by_asset_stage() -> None:
+    from vos_studio_mcp.schemas.asset import AssetListFilters
+    from vos_studio_mcp.services.asset_service import list_sprint_assets
+
+    assets = [_mock_asset_full(asset_stage="stage_c", qa_status="approved")]
+    ctx = _asset_session_ctx(asset_list=assets)
+    sprint_id = str(uuid.uuid4())
+    filters = AssetListFilters(asset_stage="stage_c")
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await list_sprint_assets(sprint_id, filters)
+
+    assert result.total == 1
+    assert result.assets[0].asset_stage == "stage_c"
+
+
+@pytest.mark.asyncio
+async def test_list_sprint_assets_filter_by_qa_status() -> None:
+    from vos_studio_mcp.schemas.asset import AssetListFilters
+    from vos_studio_mcp.services.asset_service import list_sprint_assets
+
+    assets = [_mock_asset_full(qa_status="approved")]
+    ctx = _asset_session_ctx(asset_list=assets)
+    sprint_id = str(uuid.uuid4())
+    filters = AssetListFilters(qa_status="approved")
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await list_sprint_assets(sprint_id, filters)
+
+    assert result.total == 1
+    assert result.assets[0].qa_status == "approved"
+
+
+@pytest.mark.asyncio
+async def test_list_sprint_assets_no_filters_returns_all() -> None:
+    from vos_studio_mcp.services.asset_service import list_sprint_assets
+
+    assets = [
+        _mock_asset_full(asset_stage="stage_b", qa_status=None),
+        _mock_asset_full(asset_stage="stage_c", qa_status="approved"),
+    ]
+    ctx = _asset_session_ctx(asset_list=assets)
+    sprint_id = str(uuid.uuid4())
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await list_sprint_assets(sprint_id)
+
+    assert result.total == 2

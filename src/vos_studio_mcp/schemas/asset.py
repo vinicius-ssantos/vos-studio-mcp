@@ -98,3 +98,16 @@ class AssetListResponse(BaseModel):
     total: int
     assets: list[AssetListItem]
     next_action: str
+
+
+class AssetListFilters(BaseModel):
+    """Optional filters for list_sprint_assets."""
+
+    asset_stage: AssetStage | None = Field(
+        default=None,
+        description="Filter by VOS production stage (e.g. stage_c, repair).",
+    )
+    qa_status: Literal["approved", "needs_repair", "rejected"] | None = Field(
+        default=None,
+        description="Filter by QA review outcome. Omit to return all.",
+    )
