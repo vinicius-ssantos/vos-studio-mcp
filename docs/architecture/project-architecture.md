@@ -20,6 +20,8 @@ The current architecture is organized as:
 - asynchronous background workers,
 - and Postgres/Redis/object storage as infrastructure.
 
+In addition to tools, the server also exposes MCP-native resources and prompts. These are read-only, stateless knowledge artifacts and should be understood as a knowledge surface, not as part of the transactional workflow path.
+
 ```mermaid
 flowchart TD
     A[MCP Clients<br/>ChatGPT / agents / operators]
@@ -28,7 +30,7 @@ flowchart TD
 
     B --> C[Application / Workflow Services<br/>sprint_service<br/>execution_pack_service<br/>blueprint_service<br/>generation_service<br/>asset_service<br/>prompt_library_service<br/>performance_record_service<br/>budget_guard<br/>audit_service]
 
-    B --> R[MCP Resources / Prompts<br/>vos://playbook<br/>vos://stage-templates/{stage}<br/>vos://providers<br/>vos_creative_brief<br/>vos_shot_direction]
+    B --> R[MCP Resources / Prompts<br/>read-only, stateless<br/>vos://playbook<br/>vos://stage-templates/{stage}<br/>vos://providers<br/>vos_creative_brief<br/>vos_shot_direction]
 
     C --> D[VOS Creative Domain<br/>Sprint<br/>BrandKit + Asset Lock<br/>Asset<br/>VariantGroup / Variant<br/>PerformanceRecord<br/>ProviderUsageEvent]
 
@@ -48,6 +50,10 @@ flowchart TD
 
     I --> G
 ```
+
+### Scope note
+
+The tool surface shown above is a high-level summary, not a complete tool inventory. The current server also exposes workflow and operations tools such as sprint status, provider usage summary, provider capability listing, client webhook configuration, variant conclusion, circuit breaker reset, creative brief preparation, and campaign angle generation.
 
 ---
 
@@ -117,6 +123,10 @@ The VOS workflow is now much closer to the actual production method:
 - repair if needed,
 - register final delivery.
 
+The most important nuance is that Stage C can now follow two distinct execution paths:
+- an API path, which creates a provider job and then relies on polling/upload,
+- or a manual provider path, where a human operator creates the asset and registers it directly.
+
 ```mermaid
 flowchart TD
     A[create_creative_sprint] --> B[Sprint + BrandKit context]
@@ -133,22 +143,22 @@ flowchart TD
     D0 --> E[register_manual_asset]
     D1 --> E
     D2 --> E
-    D3 --> F[request_api_video or manual provider execution]
-    D4 --> G[review_asset_quality]
-    D5 --> E
 
-    F --> H[poll_video_job]
+    D3 --> F1[API path<br/>request_api_video]
+    D3 --> F2[Manual path<br/>provider dashboard / editor]
+    F2 --> E
+
+    F1 --> H[poll_video_job]
     H --> I{provider completed?}
 
     I -->|no| H
     I -->|yes| J[set generation_status=completed]
-
-    J --> K{media type}
-    K -->|video| L[upload_video_to_storage]
-    K -->|image| M[upload_image_to_storage]
-
+    J --> K[set storage_status=pending]
+    K --> L[upload_video_to_storage]
     L --> N[storage_url + storage_status]
-    M --> N
+
+    D4 --> G[review_asset_quality]
+    D5 --> E
 
     E --> G
     N --> G
@@ -158,6 +168,10 @@ flowchart TD
     O -->|needs_repair| D4
     O -->|rejected| D4
 ```
+
+### Important note
+
+`upload_image_to_storage` exists in the system, but it belongs to image-provider completion paths and webhook/media-routing flows. It is not part of the `request_api_video()` path, which is currently video-only and bound to Higgsfield.
 
 ---
 
@@ -224,7 +238,7 @@ The system can also be read as six layers.
 flowchart LR
     subgraph L1[Interface Layer]
         A1[MCP Tools]
-        A2[MCP Resources / Prompts]
+        A2[MCP Resources / Prompts<br/>read-only / stateless]
     end
 
     subgraph L2[Workflow Layer]
@@ -330,7 +344,19 @@ flowchart LR
 
 ---
 
-## 7. Relationship to ADRs
+## 7. Known nuances in the current `main`
+
+This document is intended to describe the current runtime architecture accurately, but a few nuances are worth calling out explicitly:
+
+- The individual job status path is storage-aware, but aggregated job views still deserve review so they do not sound more final than the underlying storage state.
+- The API video path clearly re-checks sprint budget under row lock. Limit semantics around `max_videos` should continue to be reviewed alongside the request-time concurrency model.
+- The current cost reconciliation path is operationally useful, but the semantics of “actual billed cost” vs “estimate confirmed” should continue to be made clearer over time.
+
+These are not architecture-breakers, but they are the kinds of details that affect how precisely the workflow layer communicates system state.
+
+---
+
+## 8. Relationship to ADRs
 
 This document is descriptive.
 
