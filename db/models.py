@@ -141,6 +141,8 @@ class Asset(Base):
     )
     approved_as_reference: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_final_delivery: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # QA review outcome (Issue #57)
+    qa_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

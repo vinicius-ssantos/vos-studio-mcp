@@ -1,17 +1,17 @@
-"""Asset quality review service — pure composition, no paid calls (Issue #57).
+"""Asset quality review service — validates QA criteria and persists outcome (Issue #57)."""
 
-Validates QA criteria, records outcome, and returns a structured review
-response for the asset. DB update is skipped because Asset does not have
-a qa_status column yet (pure composition path).
-"""
+import uuid
 
+from db.models import Asset
 from vos_studio_mcp.auth.guards import assert_owns_client
+from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.asset_review import (
     AssetReviewCriteria,
     ReviewAssetInput,
     ReviewAssetResponse,
     ReviewOutcome,
 )
+from vos_studio_mcp.services.database import get_session, set_tenant_context_from_sprint
 
 # ---------------------------------------------------------------------------
 # Criteria field names (ordered for consistent output)
@@ -50,19 +50,36 @@ _NEXT_ACTIONS: dict[ReviewOutcome, str] = {
 
 
 async def review_asset(client_id: str, data: ReviewAssetInput) -> ReviewAssetResponse:
-    """Validate asset QA criteria and return a structured review outcome.
+    """Validate asset QA criteria, persist qa_status, and return a structured review outcome.
 
     Verifies caller owns the sprint's client, evaluates all criteria fields,
     auto-corrects an "approved" outcome to "needs_repair" when any criterion
-    fails, and returns checklist + next_action guidance.
+    fails, persists qa_status to the asset row, and returns checklist + next_action guidance.
     """
     assert_owns_client(client_id)
 
     criteria_passed, criteria_failed = _evaluate_criteria(data.criteria)
-
     outcome = _resolve_outcome(data.reviewer_outcome, criteria_failed, data.notes)
-
     approval_checklist = _build_approval_checklist(outcome, criteria_failed, data.notes)
+
+    # Persist qa_status to the asset row under the sprint's RLS tenant context.
+    async with get_session() as session:
+        try:
+            client_id_from_sprint = await set_tenant_context_from_sprint(
+                session, data.sprint_id
+            )
+        except LookupError as exc:
+            raise VosError(
+                ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found"
+            ) from exc
+        assert_owns_client(client_id_from_sprint)
+
+        asset = await session.get(Asset, uuid.UUID(data.asset_id))
+        if asset is None:
+            raise VosError(ErrorCode.NOT_FOUND, f"Asset {data.asset_id} not found")
+
+        asset.qa_status = outcome
+        await session.commit()
 
     summary = (
         f"Asset {data.asset_id[:8]}... {outcome}. "
