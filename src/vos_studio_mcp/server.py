@@ -72,7 +72,12 @@ mcp_app = _get_mcp_app(mcp)
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Start the FastMCP Streamable HTTP session manager with the FastAPI app."""
-    if mcp_app is not None and getattr(mcp, "_session_manager", None) is not None:
+    session_manager = getattr(mcp, "_session_manager", None)
+    if (
+        mcp_app is not None
+        and session_manager is not None
+        and not getattr(session_manager, "_has_started", False)
+    ):
         async with mcp.session_manager.run():
             yield
         return
