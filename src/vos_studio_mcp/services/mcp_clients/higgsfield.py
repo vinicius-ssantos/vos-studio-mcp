@@ -1,4 +1,8 @@
-"""Higgsfield MCP client — Phase 1: discovery only (ADR-0044, Issue #73)."""
+"""Higgsfield MCP client (ADR-0044, Issue #73).
+
+Phase 1: list_higgsfield_mcp_capabilities — discovery diagnostic.
+Phase 3: call_tool — single-tool invocation used by the provider adapter.
+"""
 
 import json
 import logging
@@ -7,6 +11,7 @@ from typing import Any
 import httpx
 
 from vos_studio_mcp.config.env import get_settings
+from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.higgsfield_mcp import (
     HighgsfieldMcpCapabilitiesResponse,
     McpPromptInfo,
@@ -221,3 +226,122 @@ async def list_higgsfield_mcp_capabilities() -> HighgsfieldMcpCapabilitiesRespon
     except Exception as exc:
         log.error("higgsfield_mcp.unexpected_error", extra={"error": str(exc)})
         return _unreachable("Unexpected error connecting to Higgsfield MCP server.")
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: reusable tool invocation (used by HiggsFieldMcpAdapter)
+# ---------------------------------------------------------------------------
+
+
+def _parse_tool_result(data: dict[str, Any]) -> dict[str, Any]:
+    """Extract and JSON-decode the first text content block from a tools/call result."""
+    if "error" in data:
+        err: dict[str, Any] = data["error"]
+        raise VosError(
+            ErrorCode.PROVIDER_ERROR,
+            f"Higgsfield MCP tool error: {err.get('message', 'unknown error')}",
+        )
+    result = data.get("result", {})
+    if result.get("isError"):
+        content: list[dict[str, Any]] = result.get("content", [])
+        msg = next((c.get("text", "") for c in content if c.get("type") == "text"), "tool error")
+        raise VosError(ErrorCode.PROVIDER_ERROR, f"Higgsfield MCP tool returned error: {msg}")
+
+    content = result.get("content", [])
+    for block in content:
+        if block.get("type") == "text":
+            text: str = block.get("text", "")
+            try:
+                parsed: dict[str, Any] = json.loads(text)
+                return parsed
+            except json.JSONDecodeError:
+                return {"raw": text}
+    out: dict[str, Any] = result
+    return out
+
+
+async def call_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Establish an MCP session, invoke a named tool, and return the parsed result.
+
+    Raises VosError on auth failure, connection failure, or tool-level error.
+    Never logs the access token.
+    """
+    settings = get_settings()
+
+    if not settings.higgsfield_mcp_enabled:
+        raise VosError(ErrorCode.PROVIDER_ERROR, "Higgsfield MCP is disabled. Set HIGGSFIELD_MCP_ENABLED=true.")
+
+    url = settings.higgsfield_mcp_url
+    token = settings.higgsfield_mcp_access_token
+    if not token:
+        raise VosError(ErrorCode.PROVIDER_ERROR, "HIGGSFIELD_MCP_ACCESS_TOKEN is not configured.")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Step 1: initialize
+            init_resp = await client.post(
+                url,
+                headers=_auth_headers(token),
+                json=_rpc(
+                    "initialize",
+                    {
+                        "protocolVersion": _PROTOCOL_VERSION,
+                        "capabilities": {},
+                        "clientInfo": _CLIENT_INFO,
+                    },
+                    rpc_id=1,
+                ),
+            )
+            if init_resp.status_code == 401:
+                raise VosError(
+                    ErrorCode.PROVIDER_ERROR,
+                    "Higgsfield MCP authentication failed. Verify HIGGSFIELD_MCP_ACCESS_TOKEN.",
+                )
+            if not init_resp.is_success:
+                raise VosError(
+                    ErrorCode.PROVIDER_ERROR,
+                    f"Higgsfield MCP server returned HTTP {init_resp.status_code} on initialize.",
+                )
+
+            session_id = init_resp.headers.get("mcp-session-id")
+
+            # Step 2: initialized notification (spec compliance)
+            await client.post(
+                url,
+                headers=_auth_headers(token, session_id),
+                json=_rpc("notifications/initialized"),
+            )
+
+            # Step 3: invoke the tool
+            tool_resp = await client.post(
+                url,
+                headers=_auth_headers(token, session_id),
+                json=_rpc("tools/call", {"name": tool_name, "arguments": arguments}, rpc_id=2),
+            )
+            if not tool_resp.is_success:
+                raise VosError(
+                    ErrorCode.PROVIDER_ERROR,
+                    f"Higgsfield MCP tools/call returned HTTP {tool_resp.status_code}.",
+                )
+
+            return _parse_tool_result(_extract_result(tool_resp))
+
+    except VosError:
+        raise
+    except httpx.ConnectError as exc:
+        log.warning("higgsfield_mcp.call_tool.connect_error", extra={"tool": tool_name})
+        raise VosError(
+            ErrorCode.PROVIDER_ERROR,
+            "Could not connect to Higgsfield MCP server. Check HIGGSFIELD_MCP_URL.",
+        ) from exc
+    except httpx.TimeoutException as exc:
+        log.warning("higgsfield_mcp.call_tool.timeout", extra={"tool": tool_name})
+        raise VosError(
+            ErrorCode.PROVIDER_ERROR,
+            "Higgsfield MCP server did not respond within timeout.",
+        ) from exc
+    except Exception as exc:
+        log.error("higgsfield_mcp.call_tool.error", extra={"tool": tool_name, "error": str(exc)})
+        raise VosError(
+            ErrorCode.PROVIDER_ERROR, "Unexpected error calling Higgsfield MCP tool."
+        ) from exc

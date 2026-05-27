@@ -31,7 +31,7 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
     assert_owns_client(data.client_id)
     await check_rate_limit("request_api_video", data.client_id)
 
-    adapter = get_adapter("higgsfield")
+    adapter = get_adapter(data.provider)
 
     params = GenerationParams(
         sprint_id=data.sprint_id,
@@ -71,7 +71,7 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
             video_count_result = await session.execute(
                 select(func.count()).where(
                     Asset.sprint_id == sprint.id,
-                    Asset.provider == "higgsfield",
+                    Asset.provider.in_(["higgsfield", "higgsfield_mcp"]),
                 )
             )
             video_count = video_count_result.scalar_one()
@@ -89,7 +89,7 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
     # Check and record the global provider daily quota (outside session to avoid
     # holding the DB connection while performing an additional async query).
     usage_event_id = await check_provider_budget(
-        "higgsfield", data.client_id, data.sprint_id, estimate.estimated_usd
+        data.provider, data.client_id, data.sprint_id, estimate.estimated_usd
     )
 
     async with get_session() as session:
@@ -118,17 +118,17 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
 
         log.info(
             "generation.requested",
-            extra={"sprint_id": data.sprint_id, "provider": "higgsfield"},
+            extra={"sprint_id": data.sprint_id, "provider": data.provider},
         )
         gen_result = await adapter.generate_video(params)
         log.info(
             "generation.provider_submitted",
-            extra={"sprint_id": data.sprint_id, "job_id": gen_result.job_id, "provider": "higgsfield"},
+            extra={"sprint_id": data.sprint_id, "job_id": gen_result.job_id, "provider": data.provider},
         )
 
         asset = Asset(
             sprint_id=sprint.id,
-            provider="higgsfield",
+            provider=data.provider,
             prompt_version=data.prompt_version,
             preset_version=data.preset_version,
             storage_url=None,
@@ -150,7 +150,7 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
         entity_type="asset",
         entity_id=str(asset.id),
         actor=data.client_id,
-        provider="higgsfield",
+        provider=data.provider,
         mode="api_credits",
         cost_estimate_usd=estimate.estimated_usd,
         approval_status="approved",
@@ -163,7 +163,7 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
             "sprint_id": data.sprint_id,
             "asset_id": str(asset.id),
             "job_id": gen_result.job_id,
-            "provider": "higgsfield",
+            "provider": data.provider,
             "estimated_usd": estimate.estimated_usd,
         },
     )

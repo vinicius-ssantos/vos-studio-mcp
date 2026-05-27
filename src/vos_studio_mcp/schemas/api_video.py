@@ -16,6 +16,7 @@ class ApiVideoInput(BaseModel):
     duration_seconds: int = Field(default=5, ge=5, le=10)
     resolution: Literal["480p", "720p", "1080p"] = "720p"
     aspect_ratio: Literal["16:9", "4:3", "1:1", "9:21"] = "16:9"
+    provider: Literal["higgsfield", "higgsfield_mcp"] = "higgsfield"
 
 
 class ApiVideoResponse(BaseModel):
