@@ -79,6 +79,7 @@ _EXPECTED_TOOLS = {
     "list_sprints",
     "refresh_library_tiers",
     "get_client_performance_summary",
+    "list_higgsfield_mcp_capabilities",
 }
 
 

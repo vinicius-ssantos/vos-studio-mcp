@@ -80,6 +80,13 @@ class Settings(BaseSettings):
     cloudflare_account_id: str = Field(default="", alias="CLOUDFLARE_ACCOUNT_ID")
     cloudflare_api_token: str = Field(default="", alias="CLOUDFLARE_API_TOKEN")
 
+    # Higgsfield MCP client (ADR-0044, Issue #73, Phase 1)
+    higgsfield_mcp_enabled: bool = Field(default=False, alias="HIGGSFIELD_MCP_ENABLED")
+    higgsfield_mcp_url: str = Field(
+        default="https://mcp.higgsfield.ai/mcp", alias="HIGGSFIELD_MCP_URL"
+    )
+    higgsfield_mcp_access_token: str = Field(default="", alias="HIGGSFIELD_MCP_ACCESS_TOKEN")
+
     # Runtime environment — controls auth enforcement
     env: str = Field(default="development", alias="APP_ENV")
 
