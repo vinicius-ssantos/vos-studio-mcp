@@ -88,6 +88,8 @@ class AssetListItem(BaseModel):
     is_final_delivery: bool = False
     generation_status: str | None = None
     storage_status: str | None = None
+    # QA review outcome (Issue #57)
+    qa_status: str | None = None
 
 
 class AssetListResponse(BaseModel):

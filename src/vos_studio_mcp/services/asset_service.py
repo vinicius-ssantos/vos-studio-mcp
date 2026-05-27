@@ -122,6 +122,7 @@ async def list_sprint_assets(sprint_id: str) -> AssetListResponse:
             is_final_delivery=row.is_final_delivery,
             generation_status=row.generation_status,
             storage_status=row.storage_status,
+            qa_status=row.qa_status,
         )
         for row in rows
     ]

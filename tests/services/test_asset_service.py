@@ -138,6 +138,7 @@ async def test_list_sprint_assets_returns_items() -> None:
     asset1.is_final_delivery = False
     asset1.generation_status = "manual"
     asset1.storage_status = "not_required"
+    asset1.qa_status = None
 
     ctx = _asset_session_ctx(asset_list=[asset1])
     sprint_id = str(uuid.uuid4())
