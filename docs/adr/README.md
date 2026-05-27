@@ -38,3 +38,4 @@ ADRs explain important decisions, the context behind them, alternatives consider
 | [0028](0028-provider-webhook-support.md) | Provider webhook support | Accepted |
 | [0029](0029-cross-client-prompt-library.md) | Cross-client prompt library | Accepted |
 | [0030](0030-observability-and-failure-diagnostics.md) | Observability and failure diagnostics | Accepted |
+| [0031](0031-vos-native-domain-evolution-roadmap.md) | Evolve the architecture toward a VOS-native creative domain | Proposed |

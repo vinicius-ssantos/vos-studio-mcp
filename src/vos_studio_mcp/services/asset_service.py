@@ -32,6 +32,7 @@ async def register_manual_asset(data: AssetInput) -> AssetResponse:
 
         source_uuid = uuid.UUID(data.source_asset_id) if data.source_asset_id else None
 
+
         asset = Asset(
             sprint_id=uuid.UUID(data.sprint_id),
             provider=data.provider,

@@ -115,6 +115,7 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
                 f"estimated ${estimate.estimated_usd:.2f})",
             )
 
+
         log.info(
             "generation.requested",
             extra={"sprint_id": data.sprint_id, "provider": "higgsfield"},

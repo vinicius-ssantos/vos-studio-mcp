@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     # Runtime environment — controls auth enforcement
     env: str = Field(default="development", alias="APP_ENV")
 
+
     # Observability (ADR-0030)
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
     sentry_environment: str = Field(default="development", alias="SENTRY_ENVIRONMENT")

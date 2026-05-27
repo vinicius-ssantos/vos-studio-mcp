@@ -12,9 +12,7 @@ from vos_studio_mcp.tools.get_provider_usage_summary import (
 )
 from vos_studio_mcp.tools.get_sprint_status import register_get_sprint_status_tools
 from vos_studio_mcp.tools.get_video_job_status import register_get_video_job_status_tools
-from vos_studio_mcp.tools.list_provider_capabilities import (
-    register_list_provider_capabilities_tools,
-)
+from vos_studio_mcp.tools.list_provider_capabilities import register_provider_capability_tools
 from vos_studio_mcp.tools.list_sprint_assets import register_list_sprint_assets_tools
 from vos_studio_mcp.tools.list_video_jobs import register_list_video_jobs_tools
 from vos_studio_mcp.tools.prepare_creative_brief import register_prepare_creative_brief_tools
@@ -51,6 +49,7 @@ def register_tools(mcp: FastMCP) -> None:
     register_request_api_video_tools(mcp)
     register_get_video_job_status_tools(mcp)
     register_list_video_jobs_tools(mcp)
+    register_provider_capability_tools(mcp)
     register_conclude_variant_test_tools(mcp)
     register_promote_to_library_tools(mcp)
     register_search_library_tools(mcp)
@@ -58,7 +57,6 @@ def register_tools(mcp: FastMCP) -> None:
     register_record_performance_metrics_tools(mcp)
     register_set_client_webhook_tools(mcp)
     register_get_provider_usage_summary_tools(mcp)
-    register_list_provider_capabilities_tools(mcp)
     register_prepare_creative_brief_tools(mcp)
     register_generate_campaign_angles_tools(mcp)
     register_reset_circuit_breaker_tools(mcp)
