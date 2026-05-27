@@ -79,6 +79,12 @@ async def test_promote_creates_template(mock_session_ctx: MagicMock) -> None:
     sprint.id = uuid.uuid4()
     mock_session_ctx.get = AsyncMock(return_value=sprint)
 
+    # QA guard: simulate one approved asset existing
+    approved = MagicMock()
+    has_approved = MagicMock()
+    has_approved.scalars.return_value.first.return_value = approved
+    mock_session_ctx.execute = AsyncMock(return_value=has_approved)
+
     saved_template: MagicMock | None = None
 
     def capture_add(obj: object) -> None:
@@ -121,6 +127,11 @@ async def test_missing_placeholder_raises(mock_session_ctx: MagicMock) -> None:
 
     sprint = MagicMock()
     mock_session_ctx.get = AsyncMock(return_value=sprint)
+    # QA guard: approved asset exists so we reach the placeholder check
+    approved = MagicMock()
+    has_approved = MagicMock()
+    has_approved.scalars.return_value.first.return_value = approved
+    mock_session_ctx.execute = AsyncMock(return_value=has_approved)
 
     # No {{placeholder}} in template
     data = _valid_input(prompt_template="A generic video about the product launch.")
@@ -197,3 +208,52 @@ async def test_get_library_suggestions_no_match_returns_empty(
     )
 
     assert suggestions == []
+
+
+# ---------------------------------------------------------------------------
+# QA guard — sprint must have at least one approved asset
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_promote_raises_when_no_approved_assets(mock_session_ctx: MagicMock) -> None:
+    """promote_to_library should reject when the sprint has no QA-approved assets."""
+    from vos_studio_mcp.services.prompt_library_service import promote_to_library
+
+    sprint = MagicMock()
+    mock_session_ctx.get = AsyncMock(return_value=sprint)
+
+    # Simulate no approved assets: execute returns result whose scalars().first() is None
+    no_assets = MagicMock()
+    no_assets.scalars.return_value.first.return_value = None
+    mock_session_ctx.execute = AsyncMock(return_value=no_assets)
+
+    data = _valid_input()
+    with pytest.raises(VosError) as exc_info:
+        await promote_to_library(data, "op@example.com")
+
+    assert exc_info.value.error_code == ErrorCode.VALIDATION_ERROR
+    assert "QA-approved" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+async def test_promote_succeeds_when_approved_asset_exists(mock_session_ctx: MagicMock) -> None:
+    """promote_to_library should proceed when at least one approved asset exists."""
+    from vos_studio_mcp.services.prompt_library_service import promote_to_library
+
+    sprint = MagicMock()
+    mock_session_ctx.get = AsyncMock(return_value=sprint)
+
+    # Approved asset exists
+    approved_asset = MagicMock()
+    has_assets = MagicMock()
+    has_assets.scalars.return_value.first.return_value = approved_asset
+    mock_session_ctx.execute = AsyncMock(return_value=has_assets)
+
+    mock_session_ctx.add = MagicMock()
+    mock_session_ctx.refresh = AsyncMock()
+
+    data = _valid_input()
+    result = await promote_to_library(data, "op@example.com")
+
+    assert result.status == "created"

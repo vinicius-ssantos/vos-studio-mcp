@@ -11,6 +11,7 @@ from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.asset import (
     _ASSET_STAGE_LABELS,
     AssetInput,
+    AssetListFilters,
     AssetListItem,
     AssetListResponse,
     AssetResponse,
@@ -87,7 +88,10 @@ async def register_manual_asset(data: AssetInput) -> AssetResponse:
     )
 
 
-async def list_sprint_assets(sprint_id: str) -> AssetListResponse:
+async def list_sprint_assets(
+    sprint_id: str,
+    filters: AssetListFilters | None = None,
+) -> AssetListResponse:
     sprint_uuid = uuid.UUID(sprint_id)
     async with get_session() as session:
         # Resolve sprint ownership, set RLS tenant context, and assert caller owns the sprint.
@@ -97,9 +101,15 @@ async def list_sprint_assets(sprint_id: str) -> AssetListResponse:
             raise VosError(ErrorCode.NOT_FOUND, f"Sprint {sprint_id} not found") from exc
         assert_owns_client(client_id)
 
-        result = await session.execute(
-            select(Asset).where(Asset.sprint_id == sprint_uuid).order_by(Asset.created_at)
-        )
+        query = select(Asset).where(Asset.sprint_id == sprint_uuid)
+        if filters is not None:
+            if filters.asset_stage is not None:
+                query = query.where(Asset.asset_stage == filters.asset_stage)
+            if filters.qa_status is not None:
+                query = query.where(Asset.qa_status == filters.qa_status)
+        query = query.order_by(Asset.created_at)
+
+        result = await session.execute(query)
         rows = list(result.scalars().all())
 
     items = [

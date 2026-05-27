@@ -6,7 +6,7 @@ import uuid
 
 from sqlalchemy import select
 
-from db.models import PromptTemplate, Sprint
+from db.models import Asset, PromptTemplate, Sprint
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.prompt_template import (
     PromoteToLibraryInput,
@@ -53,6 +53,22 @@ async def promote_to_library(
         sprint = await session.get(Sprint, uuid.UUID(data.sprint_id))
         if sprint is None:
             raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
+
+        # Guard: require at least one QA-approved asset in the sprint before promoting
+        # a prompt template — ensures only proven prompts enter the library.
+        approved_count_result = await session.execute(
+            select(Asset).where(
+                Asset.sprint_id == uuid.UUID(data.sprint_id),
+                Asset.qa_status == "approved",
+            )
+        )
+        if not approved_count_result.scalars().first():
+            raise VosError(
+                ErrorCode.VALIDATION_ERROR,
+                "Cannot promote to library: sprint has no QA-approved assets. "
+                "Run review_asset_quality on at least one asset and achieve an "
+                "'approved' outcome before promoting this prompt template.",
+            )
 
         # Verify the prompt_template contains at least one placeholder
         if "{{" not in data.prompt_template:

@@ -290,7 +290,7 @@ async def test_list_sprint_assets_delegates_to_service() -> None:
     ) as mock_svc:
         result = await captured["list_sprint_assets"](sprint_id=sid)
 
-    mock_svc.assert_awaited_once_with(sid)
+    mock_svc.assert_awaited_once_with(sid, None)
     assert result is mock_resp
 
 
