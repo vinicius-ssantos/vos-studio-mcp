@@ -215,6 +215,7 @@ class PromptTemplate(Base):
     format: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
     objective: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
     platform: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    asset_stage: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
     prompt_template: Mapped[str] = mapped_column(Text, nullable=False)
     negative_prompt_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     preset_recommendations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)

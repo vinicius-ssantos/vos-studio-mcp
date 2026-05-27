@@ -21,6 +21,7 @@ def _mock_template(
     format: list[str] | None = None,
     objective: list[str] | None = None,
     platform: list[str] | None = None,
+    asset_stage: list[str] | None = None,
 ) -> MagicMock:
     t = MagicMock()
     t.id = "aaaaaaaa-0000-0000-0000-000000000001"
@@ -34,6 +35,7 @@ def _mock_template(
     t.format = format or ["video"]
     t.objective = objective or ["awareness"]
     t.platform = platform or ["instagram"]
+    t.asset_stage = asset_stage or []
     return t
 
 
@@ -65,6 +67,10 @@ class TestSearchLibraryInput:
     def test_min_tier_only_is_valid(self) -> None:
         data = SearchLibraryInput(min_tier="top_performer")
         assert data.min_tier == "top_performer"
+
+    def test_asset_stage_only_is_valid(self) -> None:
+        data = SearchLibraryInput(asset_stage=["stage_c"])
+        assert data.asset_stage == ["stage_c"]
 
     def test_limit_defaults_to_10(self) -> None:
         data = SearchLibraryInput(query="x")
@@ -169,6 +175,29 @@ class TestSearchLibraryService:
         with patch(_GET_SESSION, return_value=ctx):
             resp = await search_library(SearchLibraryInput(query="video"))
         assert resp.next_action == "prepare_video_blueprint"
+
+    @pytest.mark.asyncio
+    async def test_asset_stage_filter(self) -> None:
+        templates = [
+            _mock_template(name="Stage C video", asset_stage=["stage_c"]),
+            _mock_template(name="Stage A concept", asset_stage=["stage_a"]),
+            _mock_template(name="Agnostic template", asset_stage=[]),
+        ]
+        ctx = _session_ctx(templates)
+        with patch(_GET_SESSION, return_value=ctx):
+            resp = await search_library(SearchLibraryInput(asset_stage=["stage_c"]))
+        names = [r.name for r in resp.results]
+        # stage_c match + agnostic match; stage_a excluded
+        assert "Stage C video" in names
+        assert "Agnostic template" in names
+        assert "Stage A concept" not in names
+
+    @pytest.mark.asyncio
+    async def test_asset_stage_in_result(self) -> None:
+        ctx = _session_ctx([_mock_template(asset_stage=["stage_c", "final"])])
+        with patch(_GET_SESSION, return_value=ctx):
+            resp = await search_library(SearchLibraryInput(query="video"))
+        assert resp.results[0].asset_stage == ["stage_c", "final"]
 
     @pytest.mark.asyncio
     async def test_prompt_preview_truncated_to_300(self) -> None:

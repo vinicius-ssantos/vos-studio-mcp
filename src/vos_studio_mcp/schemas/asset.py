@@ -107,7 +107,10 @@ class AssetListFilters(BaseModel):
         default=None,
         description="Filter by VOS production stage (e.g. stage_c, repair).",
     )
-    qa_status: Literal["approved", "needs_repair", "rejected"] | None = Field(
+    qa_status: Literal["needs_review", "approved", "needs_repair", "rejected"] | None = Field(
         default=None,
-        description="Filter by QA review outcome. Omit to return all.",
+        description=(
+            "Filter by QA review outcome. 'needs_review' = ready for QA but not yet reviewed. "
+            "Omit to return all."
+        ),
     )

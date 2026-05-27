@@ -109,11 +109,44 @@ class SprintStatusResponse(BaseModel):
 class CloseSprintInput(BaseModel):
     sprint_id: str
     reason: str | None = None
+    force: bool = Field(
+        default=False,
+        description=(
+            "Bypass final-delivery validation. Use only when the approved delivery asset "
+            "exists outside the system or when QA is handled externally."
+        ),
+    )
 
 
 class CloseSprintResponse(BaseModel):
     status: str
     sprint_id: str
     sprint_status: str
+    summary: str
+    next_action: str
+
+
+# ---------------------------------------------------------------------------
+# Sprint performance summary (by asset stage)
+# ---------------------------------------------------------------------------
+
+
+class StagePerformanceSummary(BaseModel):
+    """Per-stage quality and performance snapshot."""
+
+    asset_stage: str
+    asset_stage_label: str | None
+    total_assets: int
+    approved_count: int
+    needs_repair_count: int
+    rejected_count: int
+    avg_performance_score: float | None
+
+
+class SprintPerformanceSummaryResponse(BaseModel):
+    status: str
+    sprint_id: str
+    total_assets: int
+    by_stage: list[StagePerformanceSummary]
     summary: str
     next_action: str

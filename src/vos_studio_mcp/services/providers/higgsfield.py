@@ -17,6 +17,7 @@ from vos_studio_mcp.services.providers.base import (
     JobStatus,
     ManualPack,
 )
+from vos_studio_mcp.services.providers.capabilities import get_provider_capability
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +94,12 @@ class HiggsFieldAdapter:
             extra={"sprint_id": params.sprint_id, "prompt_version": params.prompt_version},
         )
 
-        breaker = get_breaker("higgsfield")
+        _cap = get_provider_capability("higgsfield")
+        breaker = get_breaker(
+            "higgsfield",
+            failure_threshold=_cap.circuit_breaker_failure_threshold,
+            recovery_timeout=_cap.circuit_breaker_timeout_s,
+        )
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await breaker.execute(
                 client.post(endpoint, headers=self._headers(), json=payload),
@@ -123,7 +129,12 @@ class HiggsFieldAdapter:
         if not get_settings().higgsfield_api_key:
             raise VosError(ErrorCode.PROVIDER_ERROR, "HIGGSFIELD_API_KEY is not configured")
 
-        breaker = get_breaker("higgsfield")
+        _cap = get_provider_capability("higgsfield")
+        breaker = get_breaker(
+            "higgsfield",
+            failure_threshold=_cap.circuit_breaker_failure_threshold,
+            recovery_timeout=_cap.circuit_breaker_timeout_s,
+        )
         status_url = f"{_BASE_URL}/v1/video/status/{job_id}"
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await breaker.execute(

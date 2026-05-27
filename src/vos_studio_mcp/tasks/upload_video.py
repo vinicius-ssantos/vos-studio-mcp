@@ -76,6 +76,11 @@ async def _update_storage_url(asset_id: str, public_url: str) -> None:
         if asset is not None:
             asset.storage_url = public_url
             asset.storage_status = "stored"
+            # Mark as ready for QA review only if not already reviewed.
+            # This allows agents to filter list_sprint_assets(qa_status="needs_review")
+            # to find assets that are stored and awaiting quality review.
+            if asset.qa_status is None:
+                asset.qa_status = "needs_review"
             await session.commit()
 
 

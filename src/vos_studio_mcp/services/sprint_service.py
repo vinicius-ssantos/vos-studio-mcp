@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from db.models import Asset, BrandKit, Sprint, Variant, VariantGroup
 from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
+from vos_studio_mcp.schemas.asset import _ASSET_STAGE_LABELS
 from vos_studio_mcp.schemas.performance_record import PerformanceContext
 from vos_studio_mcp.schemas.sprint import (
     BudgetStatus,
@@ -15,8 +16,10 @@ from vos_studio_mcp.schemas.sprint import (
     CloseSprintResponse,
     LibrarySuggestion,
     SprintInput,
+    SprintPerformanceSummaryResponse,
     SprintResponse,
     SprintStatusResponse,
+    StagePerformanceSummary,
 )
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
 from vos_studio_mcp.services.database import get_session, set_tenant_context
@@ -264,6 +267,24 @@ async def close_sprint(data: CloseSprintInput) -> CloseSprintResponse:
         if sprint.sprint_status == "closed":
             raise VosError(ErrorCode.INVALID_INPUT, f"Sprint {data.sprint_id} is already closed")
 
+        # Guard: require at least one QA-approved final delivery asset unless force=True.
+        # Ensures sprints only close after a deliverable has been reviewed and approved.
+        if not data.force:
+            delivery_result = await session.execute(
+                select(Asset).where(
+                    Asset.sprint_id == sprint_uuid,
+                    Asset.is_final_delivery.is_(True),
+                    Asset.qa_status == "approved",
+                )
+            )
+            if not delivery_result.scalars().first():
+                raise VosError(
+                    ErrorCode.VALIDATION_ERROR,
+                    "Sprint cannot be closed: no QA-approved final delivery asset found. "
+                    "Register an asset with is_final_delivery=True and run review_asset_quality "
+                    "to approve it — or pass force=True to close without a delivery asset.",
+                )
+
         sprint.sprint_status = "closed"
         await session.commit()
         product_name = sprint.product_name
@@ -281,4 +302,57 @@ async def close_sprint(data: CloseSprintInput) -> CloseSprintResponse:
         sprint_status="closed",
         summary=f"Sprint for '{product_name}' closed. Use record_asset_performance to log results.",
         next_action="record_asset_performance",
+    )
+
+
+async def get_sprint_performance_summary(
+    sprint_id: str,
+) -> SprintPerformanceSummaryResponse:
+    """Return per-stage asset quality and performance snapshot for a sprint."""
+    sprint_uuid = uuid.UUID(sprint_id)
+    async with get_session() as session:
+        sprint = await session.get(Sprint, sprint_uuid)
+        if sprint is None:
+            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {sprint_id} not found")
+        assert_owns_client(str(sprint.client_id))
+
+        result = await session.execute(select(Asset).where(Asset.sprint_id == sprint_uuid))
+        assets = list(result.scalars().all())
+
+    # Group assets by stage
+    from collections import defaultdict
+
+    by_stage: dict[str, list[Asset]] = defaultdict(list)
+    for asset in assets:
+        stage = asset.asset_stage or "untagged"
+        by_stage[stage].append(asset)
+
+    stage_summaries: list[StagePerformanceSummary] = []
+    for stage, stage_assets in sorted(by_stage.items()):
+        scores = [a.performance_score for a in stage_assets if a.performance_score is not None]
+        stage_summaries.append(
+            StagePerformanceSummary(
+                asset_stage=stage,
+                asset_stage_label=_ASSET_STAGE_LABELS.get(stage),
+                total_assets=len(stage_assets),
+                approved_count=sum(1 for a in stage_assets if a.qa_status == "approved"),
+                needs_repair_count=sum(
+                    1 for a in stage_assets if a.qa_status == "needs_repair"
+                ),
+                rejected_count=sum(1 for a in stage_assets if a.qa_status == "rejected"),
+                avg_performance_score=sum(scores) / len(scores) if scores else None,
+            )
+        )
+
+    has_approved = any(s.approved_count > 0 for s in stage_summaries)
+    return SprintPerformanceSummaryResponse(
+        status="ok",
+        sprint_id=sprint_id,
+        total_assets=len(assets),
+        by_stage=stage_summaries,
+        summary=(
+            f"Sprint '{sprint.product_name}' has {len(assets)} asset(s) "
+            f"across {len(stage_summaries)} stage(s)."
+        ),
+        next_action="close_sprint" if has_approved else "review_asset_quality",
     )

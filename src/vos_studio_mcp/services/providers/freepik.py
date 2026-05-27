@@ -17,6 +17,7 @@ from vos_studio_mcp.services.providers.base import (
     JobStatus,
     ManualPack,
 )
+from vos_studio_mcp.services.providers.capabilities import get_provider_capability
 
 log = logging.getLogger(__name__)
 
@@ -69,7 +70,12 @@ class FreepikAdapter:
             extra={"sprint_id": params.sprint_id, "prompt_version": params.prompt_version},
         )
 
-        breaker = get_breaker("freepik")
+        _cap = get_provider_capability("freepik")
+        breaker = get_breaker(
+            "freepik",
+            failure_threshold=_cap.circuit_breaker_failure_threshold,
+            recovery_timeout=_cap.circuit_breaker_timeout_s,
+        )
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await breaker.execute(
                 client.post(
@@ -108,7 +114,12 @@ class FreepikAdapter:
         if not get_settings().freepik_api_key:
             raise VosError(ErrorCode.PROVIDER_ERROR, "FREEPIK_API_KEY is not configured")
 
-        breaker = get_breaker("freepik")
+        _cap = get_provider_capability("freepik")
+        breaker = get_breaker(
+            "freepik",
+            failure_threshold=_cap.circuit_breaker_failure_threshold,
+            recovery_timeout=_cap.circuit_breaker_timeout_s,
+        )
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await breaker.execute(
                 client.get(

@@ -86,6 +86,7 @@ async def promote_to_library(
             format=data.format,
             objective=data.objective,
             platform=data.platform,
+            asset_stage=data.asset_stage,
             prompt_template=data.prompt_template,
             negative_prompt_template=data.negative_prompt_template,
             preset_recommendations=data.preset_recommendations,
@@ -215,6 +216,7 @@ async def search_library(data: SearchLibraryInput) -> SearchLibraryResponse:
         t_format: list[str] = t.format or []
         t_objective: list[str] = t.objective or []
         t_platform: list[str] = t.platform or []
+        t_asset_stage: list[str] = getattr(t, "asset_stage", None) or []
         if data.industry and not set(data.industry) & set(t_industry):
             return False
         if data.format and not set(data.format) & set(t_format):
@@ -222,6 +224,9 @@ async def search_library(data: SearchLibraryInput) -> SearchLibraryResponse:
         if data.objective and not set(data.objective) & set(t_objective):
             return False
         if data.platform and not set(data.platform) & set(t_platform):
+            return False
+        # asset_stage filter: templates with no stage tag are stage-agnostic and always match
+        if data.asset_stage and t_asset_stage and not set(data.asset_stage) & set(t_asset_stage):
             return False
 
         # minimum performance tier
@@ -244,6 +249,7 @@ async def search_library(data: SearchLibraryInput) -> SearchLibraryResponse:
             format=t.format or [],
             objective=t.objective or [],
             platform=t.platform or [],
+            asset_stage=getattr(t, "asset_stage", None) or [],
             prompt_preview=t.prompt_template[:300],
         )
         for t in matched
