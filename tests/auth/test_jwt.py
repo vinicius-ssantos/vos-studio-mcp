@@ -53,6 +53,18 @@ async def test_returns_client_id_claim() -> None:
 
 
 @respx.mock
+async def test_prefers_app_metadata_client_id_claim() -> None:
+    respx.get(_JWKS_URL).mock(return_value=Response(200, json=_jwks()))
+    tok = _token({
+        "client_id": "legacy-client-abc",
+        "sub": "user-1",
+        "exp": int(time.time()) + 3600,
+        "app_metadata": {"client_id": "brand-client-abc"},
+    })
+    assert await validate_bearer_token(tok, _ISSUER) == "brand-client-abc"
+
+
+@respx.mock
 async def test_falls_back_to_sub_when_no_client_id() -> None:
     respx.get(_JWKS_URL).mock(return_value=Response(200, json=_jwks()))
     tok = _token({"sub": "user-xyz", "exp": int(time.time()) + 3600})
