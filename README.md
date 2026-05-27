@@ -2,7 +2,7 @@
 
 VOS Studio MCP is the operational Model Context Protocol server for **VOS Studio**, a performance creative studio focused on AI-assisted creative production for ads, product launches, and e-commerce campaigns.
 
-This project is designed to become the internal creative operations layer that connects briefs, brand kits, creative strategy, prompt packs, generation providers, asset QA, cost controls, approvals, and delivery workflows.
+This project acts as the internal creative operations layer that connects briefs, brand kits, creative strategy, prompt packs, generation providers, asset QA, cost controls, approvals, and delivery workflows.
 
 The goal is not to build a generic AI image/video generator. The goal is to build a structured creative production system for a real agency workflow.
 
@@ -20,10 +20,10 @@ client briefing
   → creative angles
   → hooks
   → prompt packs
-  → dashboard execution pack or API generation job
+  → stage-aware execution pack or API generation job
   → asset registration
   → quality review
-  → delivery pack
+  → final delivery
 ```
 
 The system should make creative production faster, more consistent, easier to audit, and safer to operate with AI tools.
@@ -34,24 +34,25 @@ The system should make creative production faster, more consistent, easier to au
 
 The MCP server is responsible for orchestrating the creative workflow, not for replacing every creative or production decision.
 
-It should manage:
+It manages:
 
 - clients
 - brand kits
 - creative briefs
 - creative sprints
-- hooks and angles
-- prompt packs
-- provider-specific generation settings
-- manual dashboard execution packs
+- campaign angles
+- prompt packs and provider settings
+- stage-aware execution packs
 - API/credit-based generation jobs
-- asset registration
-- asset metadata
-- creative QA
+- manual asset registration
+- stage-aware asset metadata
+- creative QA and repair routing
 - approval checkpoints
-- delivery packages
+- delivery assets
 - cost estimation and budget limits
+- provider usage summaries
 - audit logs
+- performance feedback loops
 
 ---
 
@@ -70,6 +71,23 @@ This project is not intended to be:
 Provider dashboards such as Freepik, Higgsfield, and Magnific must not be automated through logged-in browser sessions, Playwright, Selenium, scraping, or simulated human clicks.
 
 The MCP can prepare instructions, prompts, presets, and checklists for a human operator. Automated execution should only happen through official and permitted APIs, MCP servers, or CLIs.
+
+---
+
+## Current architecture and maturity
+
+The project is no longer just a foundation skeleton. It now includes a more explicit **VOS-native** domain model and operational workflow, including:
+
+- stage-aware assets with lineage and delivery/reference semantics
+- BrandKit Asset Lock / campaign visual system support
+- VOS 9-shot blueprint generation
+- stage-aware execution packs for Stage 0 / A / B / C / repair / final
+- API-driven video generation with async polling and storage upload
+- QA review workflow with repair routing
+- provider usage tracking, budget checks, and audit logging
+- MCP resources and prompts for reusable VOS knowledge artifacts
+
+Architecture overview and diagrams are documented in [`docs/architecture/project-architecture.md`](docs/architecture/project-architecture.md).
 
 ---
 
@@ -102,7 +120,7 @@ This mode is useful for exploratory creative work and for workflows where dashbo
 
 Used when the MCP executes through an official API, MCP server, CLI, or SDK.
 
-This mode must include:
+This mode includes:
 
 - provider
 - model/tool
@@ -131,73 +149,82 @@ A sprint can include:
 - product or offer
 - campaign objective
 - target audience
-- creative angles
-- hooks
-- scripts
-- prompt packs
-- generation mode
+- campaign angles
+- creative brief
+- blueprint
+- stage-aware assets
 - provider jobs
-- assets
 - QA results
 - cost estimates
 - approvals
 - delivery pack
 
-Most MCP tools should either create, read, update, or act on a `sprint_id`.
+Most MCP tools either create, read, update, or act on a `sprint_id`.
+
+The current domain also treats **assets as stage-aware creative artifacts**, not only storage references. Assets can carry stage, kind, lineage, reference approval, and final-delivery semantics.
 
 ---
 
-## Initial MCP tools
+## Current MCP capabilities
 
-The first version of the server should focus on a small set of workflow-oriented tools instead of many tiny tools.
+The server now exposes a broader workflow surface than the original bootstrap plan.
 
-Recommended initial tools:
+Representative tools include:
 
 ```text
 create_client
 save_brand_kit
 create_creative_sprint
-prepare_dashboard_pack
-estimate_generation_cost
+get_sprint_status
+prepare_creative_brief
+generate_campaign_angles
+prepare_video_blueprint
+prepare_execution_pack
 register_manual_asset
 review_asset_quality
-create_delivery_pack
+request_api_video
+get_video_job_status
+list_video_jobs
+record_asset_performance
+record_performance_metrics
+promote_to_library
+search_library
+list_provider_capabilities
+get_provider_usage_summary
+set_client_webhook
+close_sprint
+conclude_variant_test
+reset_circuit_breaker
 ```
 
-Later tools may include:
+The MCP server also exposes reusable **resources and prompts**, such as:
 
-```text
-run_approved_generation
-check_generation_status
-sync_provider_history
-create_prompt_pack
-create_hook_variations
-create_static_ad_concepts
-create_video_ad_concepts
-```
+- `vos://playbook`
+- `vos://stage-templates/{stage}`
+- `vos://providers`
+- `vos_creative_brief(...)`
+- `vos_shot_direction(...)`
 
-Tool design should optimize for low token cost and predictable agent behavior.
+Tool design still optimizes for compact, predictable responses rather than large raw payloads.
 
-A good tool response should be compact:
+A good tool response should remain compact:
 
 ```json
 {
   "status": "created",
   "sprint_id": "spr_123",
-  "summary": "Sprint created with 5 angles, 10 hooks, and 6 prompt packs.",
-  "next_action": "prepare_dashboard_pack"
+  "summary": "Sprint created and ready for blueprint/execution pack generation.",
+  "next_action": "prepare_video_blueprint"
 }
 ```
-
-A tool should not return large raw logs, full provider payloads, or entire asset collections unless explicitly requested.
 
 ---
 
 ## Provider strategy
 
-Provider integrations should be implemented through adapters.
+Provider integrations are implemented through adapters.
 
-Initial provider categories:
+Current provider categories:
 
 - `manual_dashboard`
 - `higgsfield`
@@ -241,21 +268,22 @@ The MCP should return references:
 
 ## Persistence strategy
 
-The system of record is expected to be Supabase/Postgres.
+The system of record is Supabase/Postgres.
 
-Postgres should store structured operational data such as:
+Postgres stores structured operational data such as:
 
 - clients
 - brand kits
 - creative sprints
-- prompts
-- presets
-- assets
-- jobs
+- prompts and presets
+- stage-aware assets
+- provider jobs
 - approvals
 - budgets
+- provider usage events
 - audit events
 - deliveries
+- performance records
 
 Local development may use a lightweight setup as long as the production schema remains compatible with Postgres.
 
@@ -303,105 +331,47 @@ Logs and MCP responses must not expose secrets.
 
 ---
 
-## Architecture Decision Records
+## Architecture decisions
 
-Architectural decisions are documented in [`docs/adr`](docs/adr).
+All architecture decisions are documented in [`docs/adr/`](docs/adr/README.md).
 
-Current ADRs:
+The ADR set now covers the original foundation decisions plus newer domain-evolution work, including:
 
-- ADR-0001 — Use Python as the primary language
-- ADR-0002 — Build a remote HTTP MCP server
-- ADR-0003 — Separate dashboard_manual and api_credits modes
-- ADR-0004 — Do not automate provider dashboards
-- ADR-0005 — Require human approval for paid or external actions
-- ADR-0006 — Use workflow-oriented tools to reduce token cost
-- ADR-0007 — Use Supabase/Postgres as the system of record
-- ADR-0008 — Store assets outside the MCP and return references
-- ADR-0009 — Use provider adapters for Higgsfield, Freepik, and Magnific
-- ADR-0010 — Treat the Creative Sprint as the core domain entity
-- ADR-0011 — Keep MCP tool outputs compact and structured
-- ADR-0012 — Use explicit cost budgets and generation limits
-- ADR-0013 — Keep prompts and presets versioned
-- ADR-0014 — Use queues for long-running generation jobs
-- ADR-0015 — Implement audit logs for operational traceability
-- ADR-0016 — Use environment variables and secret management for credentials
-- ADR-0017 — Start private-first and client-safe by design
-- ADR-0018 — Use incremental PR-based development with coding agents
-- ADR-0019 — Define authentication model for the remote MCP server
-- ADR-0020 — Database schema evolution and migration strategy
-- ADR-0021 — Job queue technology selection
-- ADR-0022 — Provider adapter interface contract
-- ADR-0023 — Multitenancy and client data isolation
-- ADR-0024 — Brand kit entity specification
-- ADR-0025 — Performance feedback loop and creative learning
-- ADR-0026 — Testing strategy
-- ADR-0027 — A/B testing within creative sprints
-- ADR-0028 — Provider webhook support
-- ADR-0029 — Cross-client prompt library
-- ADR-0030 — Observability and failure diagnostics
+- the VOS-native domain evolution roadmap
+- asset stage and lineage modeling
+- BrandKit Asset Lock / campaign visual system v2
+- provider usage and operational hardening
+- MCP-native resources/prompts for reusable VOS knowledge
 
-Architecture overview and diagrams are documented in [`docs/architecture/project-architecture.md`](docs/architecture/project-architecture.md).
-
-Future implementation work should read the ADRs before making architectural changes.
+Use the ADR index as the source of truth for the current architecture direction.
 
 ---
 
-## Expected project structure
+## Expected runtime shape
 
 The project uses Python with the official MCP SDK (FastMCP) for tool definitions, FastAPI for HTTP middleware, and Pydantic v2 for schema validation. Package management is handled by `uv`.
 
+```text
+Request
+  → FastAPI middleware (auth, correlation, metrics)
+  → FastMCP ASGI app (MCP protocol, tool/resource dispatch)
+  → tool handler
+  → workflow/application services
+  → providers / database / storage / async tasks
 ```
-Request → FastAPI middleware (auth, rate limiting)
-        → FastMCP ASGI app (MCP protocol, tool dispatch)
-        → tool handler (business logic)
-        → services (database, providers, storage)
-```
+
+At a high level, the runtime architecture is:
 
 ```text
-src/
-  vos_studio_mcp/
-    server.py
-    tools/
-      create_client.py
-      save_brand_kit.py
-      create_creative_sprint.py
-      prepare_dashboard_pack.py
-      estimate_generation_cost.py
-      register_manual_asset.py
-      review_asset_quality.py
-      create_delivery_pack.py
-      record_performance.py
-    schemas/
-      client.py
-      brand_kit.py
-      sprint.py
-      asset.py
-      job.py
-      approval.py
-      performance.py
-    services/
-      database.py
-      storage.py
-      audit_log.py
-      cost_estimator.py
-      providers/
-        base.py
-        manual_dashboard.py
-        higgsfield.py
-        freepik.py
-        magnific.py
-    tasks/
-      generation.py
-    config/
-      env.py
-db/
-  models.py
-  migrations/
-pyproject.toml
-.env.example
+MCP clients
+  → MCP tools/resources/prompts
+  → workflow services
+  → VOS domain model
+  → provider adapters / storage / webhooks
+  → Postgres + Redis + object storage
 ```
 
-This structure may change, but changes should be documented through ADRs when they affect architecture.
+For full diagrams, see [`docs/architecture/project-architecture.md`](docs/architecture/project-architecture.md).
 
 ---
 
@@ -424,83 +394,40 @@ Coding agents should work in constrained branches and avoid large unrelated chan
 
 ---
 
-## Roadmap
+## Current focus
 
-### Milestone 0 — Foundation
+The project has already moved beyond the initial foundation phase.
 
-- ADR foundation
-- descriptive README
-- Python 3.12 project setup
-- FastMCP/FastAPI setup
-- `uv` project setup
-- local development commands
-- `.env.example`
+The current focus is:
 
-### Milestone 1 — Minimal MCP server
+- tightening workflow correctness and state semantics
+- continuing to refine stage-aware creative execution
+- strengthening budget / storage / job-status correctness
+- improving learning loops from QA and performance data
+- keeping the architecture explicit through ADRs and documentation
 
-- remote-capable MCP server
-- authentication (OAuth 2.1 + bearer token for dev)
-- health/status tool
-- basic schema validation
-- structured tool output convention
+### Near-term focus
 
-### Milestone 2 — Creative sprint workflow
+- continued workflow correctness refinements
+- stronger reporting around provider usage and actual spend semantics
+- further UX improvements around aggregated job status and delivery readiness
+- gradual expansion of reusable playbook/resources/prompts
 
-- client creation
-- brand kit creation (full entity per ADR-0024)
-- creative sprint creation with budget pre-authorization
-- dashboard pack generation
-- manual asset registration
-
-### Milestone 3 — Persistence, auditability, and performance learning
-
-- Supabase/Postgres schema with RLS
-- audit logs
-- asset references
-- sprint budget tracking and alerts
-- performance records (`record_performance` tool)
-- sprint initialization with performance context
-
-### Milestone 4 — Provider adapters
-
-- manual dashboard adapter
-- Higgsfield adapter
-- Freepik/Magnific adapter planning
-- cost estimation interface
-
-### Milestone 5 — Production readiness
-
-- deployment
-- rate limits
-- secret management
-- job queue (Celery + Redis)
-- Flower monitoring
-- application monitoring and diagnostics
-
-### Milestone 6 — Platform integrations (future)
+### Longer-term expansion
 
 - Meta Marketing API integration for performance data
 - Google Ads API integration
 - TikTok Business API integration
 - automated brand kit enrichment from performance data
-
----
-
-## Architecture decisions
-
-All architecture decisions are documented as ADRs in [`docs/adr/`](docs/adr/README.md).
-
-The current ADR set covers ADR-0001 through ADR-0030, including language choice, remote server model, generation modes, security boundaries, persistence, provider adapters, cost controls, sprint budget pre-authorization, audit logging, authentication, schema migrations, job queue technology, adapter interface contract, client data isolation, brand kit entity specification, testing, A/B testing, webhooks, prompt libraries, observability, and the performance feedback loop.
-
-When implementing new features or making structural changes, check the ADR index first. If a decision is not covered by an existing ADR, create one before implementing.
+- additional approved provider integrations where they fit the operating model
 
 ---
 
 ## Repository status
 
-This project is in early foundation stage.
+This project is in an **active architecture and workflow implementation stage**.
 
-At this stage, the most important work is defining the architecture, safety boundaries, and operational model before implementing provider automation.
+The foundation, core domain model, and major workflow surfaces are already in place. The current work is focused more on refinement, correctness, and operational maturity than on basic bootstrapping.
 
 ---
 
