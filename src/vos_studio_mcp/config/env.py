@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     mcp_server_name: str = Field(default="vos-studio-mcp", alias="MCP_SERVER_NAME")
     mcp_server_host: str = Field(default="0.0.0.0", alias="MCP_SERVER_HOST")
     mcp_server_port: int = Field(default=8000, alias="MCP_SERVER_PORT")
+    mcp_public_base_url: str = Field(default="", alias="MCP_PUBLIC_BASE_URL")
     debug: bool = Field(default=False, alias="DEBUG")
     log_level: str = Field(default="info", alias="LOG_LEVEL")
 
@@ -26,6 +27,7 @@ class Settings(BaseSettings):
 
     # Supabase (ADR-0007)
     supabase_url: str = Field(default="", alias="SUPABASE_URL")
+    supabase_publishable_key: str = Field(default="", alias="SUPABASE_PUBLISHABLE_KEY")
     supabase_service_role_key: str = Field(default="", alias="SUPABASE_SERVICE_ROLE_KEY")
 
     # Auth — OAuth 2.1 (ADR-0019)

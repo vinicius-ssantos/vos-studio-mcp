@@ -14,7 +14,10 @@ $PostgresContainer = "vos-studio-mcp-postgres-15432"
 $PostgresImage = "postgres:16-alpine"
 $PostgresPort = "15432"
 $RedisService = "redis"
-$HealthUrl = "http://localhost:8000/health"
+$ServerHost = if ($env:MCP_SERVER_HOST) { $env:MCP_SERVER_HOST } else { "0.0.0.0" }
+$ServerPort = if ($env:MCP_SERVER_PORT) { $env:MCP_SERVER_PORT } else { "8000" }
+$HealthHost = if ($ServerHost -eq "0.0.0.0") { "localhost" } else { $ServerHost }
+$HealthUrl = "http://${HealthHost}:${ServerPort}/health"
 
 function Write-Step {
     param([string]$Message)
@@ -164,12 +167,12 @@ function Run-Migrations {
 }
 
 function Start-Api {
-    Write-Step "Starting API on http://localhost:8000"
+    Write-Step "Starting API on http://${HealthHost}:${ServerPort}"
     $stdout = Join-Path $LogsDir "uvicorn.local.out.log"
     $stderr = Join-Path $LogsDir "uvicorn.local.err.log"
     Start-Process `
         -FilePath $Python `
-        -ArgumentList @("-m", "uvicorn", "vos_studio_mcp.server:app", "--host", "0.0.0.0", "--port", "8000") `
+        -ArgumentList @("-m", "uvicorn", "vos_studio_mcp.server:app", "--host", $ServerHost, "--port", $ServerPort) `
         -WorkingDirectory $ProjectRoot `
         -WindowStyle Hidden `
         -RedirectStandardOutput $stdout `
@@ -237,9 +240,13 @@ Check-Health
 
 Write-Host ""
 Write-Host "Local VOS Studio MCP is running." -ForegroundColor Green
-Write-Host "API:        http://localhost:8000"
-Write-Host "Docs:       http://localhost:8000/docs"
-Write-Host "MCP:        http://localhost:8000/mcp/"
-Write-Host "Bearer:     local-dev-token"
+Write-Host "API:        http://${HealthHost}:${ServerPort}"
+Write-Host "Docs:       http://${HealthHost}:${ServerPort}/docs"
+Write-Host "MCP:        http://${HealthHost}:${ServerPort}/mcp/"
+if ($env:DEV_BEARER_TOKEN) {
+    Write-Host "Bearer:     configured from DEV_BEARER_TOKEN"
+} else {
+    Write-Host "Bearer:     not configured"
+}
 Write-Host "API logs:   logs\uvicorn.local.err.log"
 Write-Host "Worker logs: logs\celery.local.err.log"

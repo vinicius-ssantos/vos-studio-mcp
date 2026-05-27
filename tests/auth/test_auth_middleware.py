@@ -101,10 +101,37 @@ def test_missing_bearer_returns_401_when_auth_configured() -> None:
     async def p() -> dict[str, str]:
         return {"ok": "yes"}
 
-    s = Settings(DEV_BEARER_TOKEN="mytoken")
+    s = Settings(DEV_BEARER_TOKEN="mytoken", MCP_PUBLIC_BASE_URL="")
     with patch(_PATCH, return_value=s), TestClient(app, raise_server_exceptions=False) as c:
         resp = c.get("/protected")
     assert resp.status_code == 401
+    assert (
+        resp.headers["WWW-Authenticate"]
+        == 'Bearer resource_metadata="http://testserver/.well-known/oauth-protected-resource", '
+        'scope="openid profile email"'
+    )
+
+
+def test_missing_bearer_uses_public_base_url_in_www_authenticate() -> None:
+    app = _app(routes=False)
+
+    @app.get("/protected")
+    async def p() -> dict[str, str]:
+        return {"ok": "yes"}
+
+    s = Settings(
+        DEV_BEARER_TOKEN="mytoken",
+        MCP_PUBLIC_BASE_URL="https://vos.example.com",
+    )
+    with patch(_PATCH, return_value=s), TestClient(app, raise_server_exceptions=False) as c:
+        resp = c.get("/protected")
+
+    assert resp.status_code == 401
+    assert (
+        resp.headers["WWW-Authenticate"]
+        == 'Bearer resource_metadata="https://vos.example.com/.well-known/oauth-protected-resource", '
+        'scope="openid profile email"'
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -42,6 +42,44 @@ def test_health_endpoint_returns_status() -> None:
     assert "service" in body
 
 
+def test_oauth_protected_resource_metadata() -> None:
+    from vos_studio_mcp.server import app
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        resp = c.get("/.well-known/oauth-protected-resource")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["resource"].startswith("http")
+    assert "authorization_servers" in body
+    assert "header" in body["bearer_methods_supported"]
+    assert body["resource_name"] == "VOS Studio MCP"
+
+
+def test_oauth_protected_mcp_resource_metadata() -> None:
+    from vos_studio_mcp.server import app
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        resp = c.get("/.well-known/oauth-protected-resource/mcp")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["resource"].endswith("/mcp")
+    assert "authorization_servers" in body
+
+
+def test_oauth_authorization_server_metadata() -> None:
+    from vos_studio_mcp.server import app
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        resp = c.get("/.well-known/oauth-authorization-server")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "authorization_endpoint" in body
+    assert "token_endpoint" in body
+
+
 # ---------------------------------------------------------------------------
 # VosError exception handler
 # ---------------------------------------------------------------------------

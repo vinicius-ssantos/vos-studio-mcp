@@ -12,7 +12,11 @@ services:
         sync: false
       - key: SUPABASE_URL
         sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: MCP_PUBLIC_BASE_URL
         sync: false
       - key: OAUTH_ISSUER_URL
         sync: false
@@ -49,6 +53,12 @@ services:
         sync: false
       - key: HIGGSFIELD_API_KEY
         sync: false
+      - key: HIGGSFIELD_MCP_ENABLED
+        value: false
+      - key: HIGGSFIELD_MCP_URL
+        value: https://mcp.higgsfield.ai/mcp
+      - key: HIGGSFIELD_MCP_ACCESS_TOKEN
+        sync: false
       - key: FREEPIK_API_KEY
         sync: false
       - key: MAGNIFIC_API_KEY
@@ -59,6 +69,12 @@ services:
         sync: false
       - key: WEBHOOK_SECRET_MAGNIFIC
         sync: false
+      - key: OUTBOUND_WEBHOOK_SECRET
+        sync: false
+      - key: RATE_LIMIT_ENABLED
+        value: true
+      - key: PROVIDER_DAILY_LIMIT_USD
+        value: 5.0
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT
@@ -78,6 +94,8 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
@@ -110,10 +128,22 @@ services:
         sync: false
       - key: HIGGSFIELD_API_KEY
         sync: false
+      - key: HIGGSFIELD_MCP_ENABLED
+        value: false
+      - key: HIGGSFIELD_MCP_URL
+        value: https://mcp.higgsfield.ai/mcp
+      - key: HIGGSFIELD_MCP_ACCESS_TOKEN
+        sync: false
       - key: FREEPIK_API_KEY
         sync: false
       - key: MAGNIFIC_API_KEY
         sync: false
+      - key: OUTBOUND_WEBHOOK_SECRET
+        sync: false
+      - key: RATE_LIMIT_ENABLED
+        value: true
+      - key: PROVIDER_DAILY_LIMIT_USD
+        value: 5.0
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT

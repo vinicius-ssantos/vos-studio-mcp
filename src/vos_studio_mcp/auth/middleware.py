@@ -12,7 +12,18 @@ from vos_studio_mcp.config.env import get_settings
 
 log = logging.getLogger(__name__)
 
-_OPEN_PATHS = {"/health", "/metrics", "/docs", "/openapi.json", "/redoc"}
+_OPEN_PATHS = {
+    "/health",
+    "/metrics",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/favicon.ico",
+    "/.well-known/oauth-protected-resource",
+    "/.well-known/oauth-protected-resource/mcp",
+    "/.well-known/oauth-authorization-server",
+    "/oauth/consent",
+}
 _OPEN_PREFIXES = ("/webhooks/",)
 
 
@@ -42,7 +53,19 @@ async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) 
 
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
-        return JSONResponse({"error": "unauthorized", "detail": "Bearer token required"}, status_code=401)
+        response = JSONResponse(
+            {"error": "unauthorized", "detail": "Bearer token required"},
+            status_code=401,
+        )
+        base_url = settings.mcp_public_base_url or str(request.base_url).rstrip("/")
+        resource_metadata_path = "/.well-known/oauth-protected-resource"
+        if path.startswith("/mcp"):
+            resource_metadata_path = "/.well-known/oauth-protected-resource/mcp"
+        response.headers["WWW-Authenticate"] = (
+            f'Bearer resource_metadata="{base_url}{resource_metadata_path}", '
+            'scope="openid profile email"'
+        )
+        return response
 
     token = auth_header[7:]
 
