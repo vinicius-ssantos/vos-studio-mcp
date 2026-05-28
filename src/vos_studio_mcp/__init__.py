@@ -1,3 +1,3 @@
 """VOS Studio MCP package."""
 
-__version__ = "1.13.2"
+__version__ = "1.13.3"
