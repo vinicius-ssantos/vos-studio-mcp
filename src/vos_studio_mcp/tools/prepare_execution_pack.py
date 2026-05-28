@@ -2,8 +2,6 @@
 
 from mcp.server.fastmcp import FastMCP
 
-from vos_studio_mcp.auth.context import get_current_client_id
-from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.execution_pack import ExecutionPackResponse, PrepareExecutionPackInput
 from vos_studio_mcp.services.execution_pack_service import (
     prepare_execution_pack as _prepare_execution_pack,
@@ -22,6 +20,4 @@ def register_prepare_execution_pack_tools(mcp: FastMCP) -> None:
         final) and provider.  Returns everything an operator needs to execute
         that stage correctly without deviation.
         """
-        if get_current_client_id() is None:
-            raise VosError(ErrorCode.AUTH_REQUIRED, "Authentication required.")
         return await _prepare_execution_pack(data)
