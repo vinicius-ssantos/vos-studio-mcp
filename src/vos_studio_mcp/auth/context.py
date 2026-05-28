@@ -10,5 +10,5 @@ def get_current_client_id() -> str | None:
     return _current_client_id.get()
 
 
-def set_current_client_id(client_id: str) -> None:
+def set_current_client_id(client_id: str | None) -> None:
     _current_client_id.set(client_id)

@@ -156,7 +156,7 @@ def test_missing_bearer_native_oauth_uses_mcp_scope() -> None:
     )
 
 
-def test_native_oauth_token_sets_client_id() -> None:
+def test_native_oauth_token_authenticates_without_tenant_binding() -> None:
     captured: list[str | None] = []
     app = _app(routes=False)
 
@@ -181,7 +181,7 @@ def test_native_oauth_token_sets_client_id() -> None:
         resp = c.get("/protected", headers={"Authorization": f"Bearer {token}"})
 
     assert resp.status_code == 200
-    assert captured[0] == "native-client"
+    assert captured[0] is None
 
 
 # ---------------------------------------------------------------------------

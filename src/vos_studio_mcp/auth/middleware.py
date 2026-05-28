@@ -86,7 +86,11 @@ async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) 
 
     native_claims = validate_access_token(token, settings)
     if native_claims is not None:
-        client_id = str(native_claims.get("client_id") or settings.dev_client_id)
+        # Native MCP OAuth authenticates the private owner/operator, not a
+        # specific VOS domain client. Leave tenant unset so client-scoped
+        # service guards use explicit tool input until per-client grants exist.
+        set_current_client_id(None)
+        return await call_next(request)
     elif settings.oauth_issuer_url:
         # JWKS mode (RS/ES) — takes precedence when configured.
         client_id = await validate_bearer_token(token, settings.oauth_issuer_url)
