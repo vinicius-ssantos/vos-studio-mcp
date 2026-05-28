@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- MCP tool schema diagnostics via `tool_schema_probe`, including catalog fingerprint,
+  schema version, registered tool count, and alias support checks for MCP clients.
+- `get_server_status` now reports deployment commit and MCP tool catalog identity
+  metadata so clients can verify whether they are seeing the current tool surface.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

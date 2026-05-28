@@ -9,15 +9,34 @@ from sqlalchemy import text
 from vos_studio_mcp import __version__
 from vos_studio_mcp.config.env import Settings, get_settings
 from vos_studio_mcp.schemas.status import ComponentStatus, HealthResponse, ServerStatus
+from vos_studio_mcp.services.tool_catalog_service import (
+    compute_tool_schema_version,
+    get_commit_sha,
+    tool_catalog_snapshot,
+)
 
 log = logging.getLogger(__name__)
 
 
-def get_server_status(settings: Settings) -> ServerStatus:
+def get_server_status(settings: Settings, tools: list[object] | None = None) -> ServerStatus:
     """Return a compact status payload."""
+    schema_version: str | None = None
+    catalog_fingerprint: str | None = None
+    registered_tools_count: int | None = None
+
+    if tools is not None:
+        schema_version = compute_tool_schema_version(tools)
+        snapshot = tool_catalog_snapshot(tools)
+        catalog_fingerprint = snapshot["catalog_fingerprint"]
+        registered_tools_count = snapshot["registered_tools_count"]
+
     return ServerStatus(
         service=settings.mcp_server_name,
         version=__version__,
+        commit_sha=get_commit_sha(),
+        tool_schema_version=schema_version,
+        catalog_fingerprint=catalog_fingerprint,
+        registered_tools_count=registered_tools_count,
         next_action="create_client",
     )
 

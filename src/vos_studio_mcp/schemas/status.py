@@ -10,7 +10,28 @@ class ServerStatus(BaseModel):
     service: str
     version: str
     environment: str = Field(default="local")
+    commit_sha: str = Field(default="unknown")
+    tool_schema_version: str | None = None
+    catalog_fingerprint: str | None = None
+    registered_tools_count: int | None = None
     next_action: str | None = None
+
+
+class ToolSchemaProbeResponse(BaseModel):
+    """Compact diagnostic payload for the MCP tool schema exposed to clients."""
+
+    status: str = Field(default="ok")
+    tool_name: str
+    server_registered: bool
+    tool_schema_version: str
+    catalog_fingerprint: str
+    registered_tools_count: int
+    required: list[str] = Field(default_factory=list)
+    input_properties: list[str] = Field(default_factory=list)
+    uri_supported: bool = False
+    mime_type_supported: bool = False
+    storage_url_required: bool = False
+    advice: str
 
 
 class ComponentStatus(BaseModel):

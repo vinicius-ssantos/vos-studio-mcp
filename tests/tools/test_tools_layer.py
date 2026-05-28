@@ -50,6 +50,7 @@ def _client_id() -> str:
 
 _EXPECTED_TOOLS = {
     "get_server_status",
+    "tool_schema_probe",
     "create_client",
     "save_brand_kit",
     "create_creative_sprint",
@@ -107,12 +108,47 @@ async def test_get_server_status_delegates_to_service() -> None:
     mock_status = ServerStatus(status="ok", service="test", version="0.1.0")
 
     with (
-        patch("vos_studio_mcp.tools.status.get_settings"),
-        patch("vos_studio_mcp.tools.status.build_server_status", return_value=mock_status),
+        patch("vos_studio_mcp.tools.status.get_settings") as mock_get_settings,
+        patch("vos_studio_mcp.tools.status.registered_tools", return_value=[]),
+        patch(
+            "vos_studio_mcp.tools.status.build_server_status",
+            return_value=mock_status,
+        ) as mock_svc,
     ):
         result = await captured["get_server_status"]()
 
+    mock_svc.assert_called_once_with(mock_get_settings.return_value, [])
     assert result is mock_status
+
+
+@pytest.mark.asyncio
+async def test_tool_schema_probe_delegates_to_service() -> None:
+    from vos_studio_mcp.schemas.status import ToolSchemaProbeResponse
+    from vos_studio_mcp.tools.tool_schema_probe import register_tool_schema_probe_tools
+
+    mock_mcp, captured = _make_mock_mcp()
+    register_tool_schema_probe_tools(mock_mcp)  # type: ignore[arg-type]
+
+    mock_response = ToolSchemaProbeResponse(
+        tool_name="register_manual_asset",
+        server_registered=True,
+        tool_schema_version="abc12345",
+        catalog_fingerprint="fingerprint",
+        registered_tools_count=1,
+        advice="ok",
+    )
+
+    with (
+        patch("vos_studio_mcp.tools.tool_schema_probe.registered_tools", return_value=[]),
+        patch(
+            "vos_studio_mcp.tools.tool_schema_probe.build_tool_schema_probe",
+            return_value=mock_response,
+        ) as mock_svc,
+    ):
+        result = await captured["tool_schema_probe"](tool_name="register_manual_asset")
+
+    mock_svc.assert_called_once_with([], "register_manual_asset")
+    assert result is mock_response
 
 
 # ---------------------------------------------------------------------------

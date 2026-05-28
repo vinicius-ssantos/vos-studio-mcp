@@ -43,11 +43,13 @@ from vos_studio_mcp.tools.save_brand_kit import register_save_brand_kit_tools
 from vos_studio_mcp.tools.search_library import register_search_library_tools
 from vos_studio_mcp.tools.set_client_webhook import register_set_client_webhook_tools
 from vos_studio_mcp.tools.status import register_status_tools
+from vos_studio_mcp.tools.tool_schema_probe import register_tool_schema_probe_tools
 
 
 def register_tools(mcp: FastMCP) -> None:
     """Register all MCP tools on the provided FastMCP instance."""
     register_status_tools(mcp)
+    register_tool_schema_probe_tools(mcp)
     register_create_client_tools(mcp)
     register_save_brand_kit_tools(mcp)
     register_create_sprint_tools(mcp)
