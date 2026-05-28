@@ -1,8 +1,8 @@
 """Asset quality review schemas (Issue #57)."""
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 ReviewOutcome = Literal["approved", "needs_repair", "rejected"]
 
@@ -22,6 +22,21 @@ class ReviewAssetInput(BaseModel):
     criteria: AssetReviewCriteria = Field(default_factory=AssetReviewCriteria)
     notes: str = ""
     reviewer_outcome: ReviewOutcome = "approved"
+    performance_score: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_agent_friendly_aliases(cls, raw: Any) -> Any:
+        """Accept common MCP-agent aliases while keeping reviewer_outcome canonical."""
+        if not isinstance(raw, dict):
+            return raw
+        data = dict(raw)
+        if "reviewer_outcome" not in data:
+            if "qa_status" in data:
+                data["reviewer_outcome"] = data["qa_status"]
+            elif "outcome" in data:
+                data["reviewer_outcome"] = data["outcome"]
+        return data
 
 
 class ReviewAssetResponse(BaseModel):

@@ -30,10 +30,10 @@ def test_asset_input_stage_defaults_to_none() -> None:
     data = AssetInput(
         sprint_id="s",
         provider="manual",
-        prompt_version="v1",
-        preset_version="p1",
         storage_url="https://example.com/a.mp4",
     )
+    assert data.prompt_version == "v1"
+    assert data.preset_version == "p1"
     assert data.asset_stage is None
     assert data.asset_kind == "manual"
     assert data.source_asset_id is None
@@ -52,6 +52,17 @@ def test_asset_input_accepts_all_stages() -> None:
             asset_stage=stage,  # type: ignore[arg-type]
         )
         assert data.asset_stage == stage
+
+
+def test_asset_input_accepts_agent_friendly_aliases() -> None:
+    data = AssetInput(
+        sprint_id="s",
+        provider="manual",
+        uri="https://example.com/a.png",
+        mime_type="image/png",
+    )
+    assert data.storage_url == "https://example.com/a.png"
+    assert data.format == "image/png"
 
 
 def test_asset_input_accepts_all_kinds() -> None:
@@ -140,7 +151,7 @@ def test_asset_list_item_stage_fields_present() -> None:
         preset_version="p1",
         storage_url="https://example.com/a.mp4",
         asset_stage="stage_c",
-        asset_stage_label="Stage C — Video",
+        asset_stage_label="Stage C â€” Video",
         asset_kind="generated",
         source_asset_id=None,
         approved_as_reference=False,
@@ -149,7 +160,7 @@ def test_asset_list_item_stage_fields_present() -> None:
         storage_status="stored",
     )
     assert item.asset_stage == "stage_c"
-    assert item.asset_stage_label == "Stage C — Video"
+    assert item.asset_stage_label == "Stage C â€” Video"
     assert item.asset_kind == "generated"
     assert item.is_final_delivery is True
     assert item.generation_status == "completed"

@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.campaign_angles import (
     CampaignAngle,
     CampaignAnglesInput,
@@ -13,7 +12,6 @@ from vos_studio_mcp.schemas.campaign_angles import (
 
 _CLIENT_ID = "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa"
 
-_PATCH_AUTH = "vos_studio_mcp.tools.generate_campaign_angles.get_current_client_id"
 _PATCH_SVC = "vos_studio_mcp.tools.generate_campaign_angles.generate_campaign_angles_svc"
 
 
@@ -72,21 +70,6 @@ def _make_input(**kwargs) -> CampaignAnglesInput:
 
 
 @pytest.mark.asyncio
-async def test_auth_required_when_no_client_id() -> None:
-    from vos_studio_mcp.tools.generate_campaign_angles import (
-        register_generate_campaign_angles_tools,
-    )
-
-    mock_mcp, captured = _make_mock_mcp()
-    register_generate_campaign_angles_tools(mock_mcp)
-
-    with patch(_PATCH_AUTH, return_value=None), pytest.raises(VosError) as exc_info:
-        await captured["generate_campaign_angles"](data=_make_input())
-
-    assert exc_info.value.error_code == ErrorCode.AUTH_REQUIRED
-
-
-@pytest.mark.asyncio
 async def test_returns_response_when_authenticated() -> None:
     from vos_studio_mcp.tools.generate_campaign_angles import (
         register_generate_campaign_angles_tools,
@@ -96,12 +79,9 @@ async def test_returns_response_when_authenticated() -> None:
     register_generate_campaign_angles_tools(mock_mcp)
 
     mock_response = _make_response(5)
-    with (
-        patch(_PATCH_AUTH, return_value=_CLIENT_ID),
-        patch(
-            "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
-            new=AsyncMock(return_value=mock_response),
-        ),
+    with patch(
+        "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
+        new=AsyncMock(return_value=mock_response),
     ):
         result = await captured["generate_campaign_angles"](data=_make_input())
 
@@ -110,7 +90,7 @@ async def test_returns_response_when_authenticated() -> None:
 
 
 @pytest.mark.asyncio
-async def test_passes_client_id_from_auth_context() -> None:
+async def test_passes_client_id_from_input() -> None:
     from vos_studio_mcp.tools.generate_campaign_angles import (
         register_generate_campaign_angles_tools,
     )
@@ -119,13 +99,10 @@ async def test_passes_client_id_from_auth_context() -> None:
     register_generate_campaign_angles_tools(mock_mcp)
 
     mock_response = _make_response()
-    with (
-        patch(_PATCH_AUTH, return_value=_CLIENT_ID),
-        patch(
-            "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
-            new=AsyncMock(return_value=mock_response),
-        ) as mock_svc,
-    ):
+    with patch(
+        "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
+        new=AsyncMock(return_value=mock_response),
+    ) as mock_svc:
         await captured["generate_campaign_angles"](data=_make_input())
 
     call_args = mock_svc.call_args
@@ -142,12 +119,9 @@ async def test_next_action_is_prepare_creative_brief() -> None:
     register_generate_campaign_angles_tools(mock_mcp)
 
     mock_response = _make_response()
-    with (
-        patch(_PATCH_AUTH, return_value=_CLIENT_ID),
-        patch(
-            "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
-            new=AsyncMock(return_value=mock_response),
-        ),
+    with patch(
+        "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
+        new=AsyncMock(return_value=mock_response),
     ):
         result = await captured["generate_campaign_angles"](data=_make_input())
 
@@ -164,12 +138,9 @@ async def test_angles_have_required_fields() -> None:
     register_generate_campaign_angles_tools(mock_mcp)
 
     mock_response = _make_response(3)
-    with (
-        patch(_PATCH_AUTH, return_value=_CLIENT_ID),
-        patch(
-            "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
-            new=AsyncMock(return_value=mock_response),
-        ),
+    with patch(
+        "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
+        new=AsyncMock(return_value=mock_response),
     ):
         result = await captured["generate_campaign_angles"](data=_make_input())
 
@@ -193,12 +164,9 @@ async def test_diversity_score_in_result() -> None:
     register_generate_campaign_angles_tools(mock_mcp)
 
     mock_response = _make_response()
-    with (
-        patch(_PATCH_AUTH, return_value=_CLIENT_ID),
-        patch(
-            "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
-            new=AsyncMock(return_value=mock_response),
-        ),
+    with patch(
+        "vos_studio_mcp.tools.generate_campaign_angles._generate_campaign_angles",
+        new=AsyncMock(return_value=mock_response),
     ):
         result = await captured["generate_campaign_angles"](data=_make_input())
 
