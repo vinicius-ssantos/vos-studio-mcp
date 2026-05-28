@@ -12,7 +12,12 @@ from db.models import Asset
 from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.errors import ErrorCode, VosError
 
-_engine = create_async_engine(get_settings().database_url, echo=False, pool_pre_ping=True)
+_engine = create_async_engine(
+    get_settings().database_url,
+    echo=False,
+    pool_pre_ping=True,
+    connect_args={"prepared_statement_cache_size": 0},
+)
 _session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
     _engine, expire_on_commit=False
 )
