@@ -8,6 +8,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from vos_studio_mcp.auth.context import set_current_client_id
 from vos_studio_mcp.auth.jwt import validate_bearer_token, validate_supabase_token
+from vos_studio_mcp.auth.oauth_native import validate_access_token
 from vos_studio_mcp.config.env import get_settings
 
 log = logging.getLogger(__name__)
@@ -22,6 +23,10 @@ _OPEN_PATHS = {
     "/.well-known/oauth-protected-resource",
     "/.well-known/oauth-protected-resource/mcp",
     "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-authorization-server/mcp",
+    "/oauth/register",
+    "/oauth/authorize",
+    "/oauth/token",
     "/oauth/consent",
 }
 _OPEN_PREFIXES = ("/webhooks/",)
@@ -35,7 +40,10 @@ async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) 
 
     settings = get_settings()
     auth_required = bool(
-        settings.oauth_issuer_url or settings.supabase_jwt_secret or settings.dev_bearer_token
+        settings.mcp_oauth_signing_key
+        or settings.oauth_issuer_url
+        or settings.supabase_jwt_secret
+        or settings.dev_bearer_token
     )
 
     if not auth_required:
@@ -61,9 +69,10 @@ async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) 
         resource_metadata_path = "/.well-known/oauth-protected-resource"
         if path.startswith("/mcp"):
             resource_metadata_path = "/.well-known/oauth-protected-resource/mcp"
+        scope = "mcp" if settings.mcp_oauth_signing_key else "openid profile email"
         response.headers["WWW-Authenticate"] = (
             f'Bearer resource_metadata="{base_url}{resource_metadata_path}", '
-            'scope="openid profile email"'
+            f'scope="{scope}"'
         )
         return response
 
@@ -75,7 +84,10 @@ async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) 
 
     client_id: str | None = None
 
-    if settings.oauth_issuer_url:
+    native_claims = validate_access_token(token, settings)
+    if native_claims is not None:
+        client_id = str(native_claims.get("client_id") or settings.dev_client_id)
+    elif settings.oauth_issuer_url:
         # JWKS mode (RS/ES) — takes precedence when configured.
         client_id = await validate_bearer_token(token, settings.oauth_issuer_url)
     elif settings.supabase_jwt_secret:

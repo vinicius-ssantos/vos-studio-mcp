@@ -20,6 +20,14 @@ services:
         sync: false
       - key: OAUTH_ISSUER_URL
         sync: false
+      - key: MCP_OAUTH_ISSUER_URL
+        sync: false
+      - key: MCP_OAUTH_SIGNING_KEY
+        sync: false
+      - key: MCP_OAUTH_AUTHORIZATION_SECRET
+        sync: false
+      - key: MCP_OAUTH_ALLOWED_REDIRECT_URIS
+        value: https://chatgpt.com/connector/oauth/*
       - key: SUPABASE_JWT_SECRET
         sync: false
       - key: DEV_BEARER_TOKEN

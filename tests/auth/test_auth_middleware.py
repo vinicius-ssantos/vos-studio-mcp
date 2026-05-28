@@ -134,6 +134,56 @@ def test_missing_bearer_uses_public_base_url_in_www_authenticate() -> None:
     )
 
 
+def test_missing_bearer_native_oauth_uses_mcp_scope() -> None:
+    app = _app(routes=False)
+
+    @app.get("/protected")
+    async def p() -> dict[str, str]:
+        return {"ok": "yes"}
+
+    s = Settings(
+        MCP_PUBLIC_BASE_URL="https://vos.example.com",
+        MCP_OAUTH_SIGNING_KEY="native-signing-key",
+    )
+    with patch(_PATCH, return_value=s), TestClient(app, raise_server_exceptions=False) as c:
+        resp = c.get("/protected")
+
+    assert resp.status_code == 401
+    assert (
+        resp.headers["WWW-Authenticate"]
+        == 'Bearer resource_metadata="https://vos.example.com/.well-known/oauth-protected-resource", '
+        'scope="mcp"'
+    )
+
+
+def test_native_oauth_token_sets_client_id() -> None:
+    captured: list[str | None] = []
+    app = _app(routes=False)
+
+    @app.get("/protected")
+    async def p() -> dict[str, str | None]:
+        captured.append(get_current_client_id())
+        return {"client_id": captured[-1]}
+
+    s = Settings(
+        MCP_PUBLIC_BASE_URL="https://vos.example.com",
+        MCP_OAUTH_SIGNING_KEY="native-signing-key",
+    )
+    from vos_studio_mcp.auth.oauth_native import sign_access_token
+
+    token = sign_access_token(
+        client_id="native-client",
+        scope="mcp",
+        resource="https://vos.example.com/mcp",
+        settings=s,
+    )
+    with patch(_PATCH, return_value=s), TestClient(app, raise_server_exceptions=False) as c:
+        resp = c.get("/protected", headers={"Authorization": f"Bearer {token}"})
+
+    assert resp.status_code == 200
+    assert captured[0] == "native-client"
+
+
 # ---------------------------------------------------------------------------
 # assert_owns_client guard
 # ---------------------------------------------------------------------------

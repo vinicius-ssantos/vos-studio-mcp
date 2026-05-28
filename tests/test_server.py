@@ -1,5 +1,7 @@
 """Tests for server.py — FastAPI application wiring and entrypoint."""
 
+import base64
+import hashlib
 from unittest.mock import MagicMock
 
 import pytest
@@ -78,6 +80,89 @@ def test_oauth_authorization_server_metadata() -> None:
     body = resp.json()
     assert "authorization_endpoint" in body
     assert "token_endpoint" in body
+
+
+def test_native_oauth_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    from vos_studio_mcp.server import app, settings
+
+    monkeypatch.setattr(settings, "mcp_public_base_url", "https://vos.example.com")
+    monkeypatch.setattr(settings, "mcp_oauth_issuer_url", "https://vos.example.com")
+    monkeypatch.setattr(settings, "mcp_oauth_signing_key", "test-signing-key")
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        protected = c.get("/.well-known/oauth-protected-resource/mcp").json()
+        auth_server = c.get("/.well-known/oauth-authorization-server").json()
+
+    assert protected["resource"] == "https://vos.example.com/mcp"
+    assert protected["authorization_servers"] == ["https://vos.example.com"]
+    assert protected["scopes_supported"] == ["mcp"]
+    assert auth_server["registration_endpoint"] == "https://vos.example.com/oauth/register"
+    assert auth_server["token_endpoint_auth_methods_supported"] == ["none"]
+
+
+def test_native_oauth_register_authorize_token_flow(monkeypatch: pytest.MonkeyPatch) -> None:
+    from vos_studio_mcp.server import app, settings
+
+    monkeypatch.setattr(settings, "mcp_public_base_url", "https://vos.example.com")
+    monkeypatch.setattr(settings, "mcp_oauth_issuer_url", "https://vos.example.com")
+    monkeypatch.setattr(settings, "mcp_oauth_signing_key", "test-signing-key")
+    monkeypatch.setattr(settings, "mcp_oauth_authorization_secret", "approve-me")
+    monkeypatch.setattr(
+        settings,
+        "mcp_oauth_allowed_redirect_uris",
+        "https://chatgpt.com/connector/oauth/*",
+    )
+
+    redirect_uri = "https://chatgpt.com/connector/oauth/test"
+    code_verifier = "verifier-value-for-test"
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        registered = c.post(
+            "/oauth/register",
+            json={
+                "redirect_uris": [redirect_uri],
+                "token_endpoint_auth_method": "none",
+            },
+        )
+        assert registered.status_code == 201
+        client_id = registered.json()["client_id"]
+
+        authorize = c.post(
+            "/oauth/authorize",
+            data={
+                "response_type": "code",
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "scope": "mcp",
+                "resource": "https://vos.example.com/mcp",
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+                "state": "state-123",
+                "approval": "approve-me",
+            },
+            follow_redirects=False,
+        )
+        assert authorize.status_code == 302
+        location = authorize.headers["location"]
+        assert location.startswith(f"{redirect_uri}?")
+        code = location.split("code=", 1)[1].split("&", 1)[0]
+
+        token = c.post(
+            "/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "code": code,
+                "code_verifier": code_verifier,
+                "resource": "https://vos.example.com/mcp",
+            },
+        )
+
+    assert token.status_code == 200
+    assert token.json()["access_token"].startswith("mcp.")
 
 
 # ---------------------------------------------------------------------------

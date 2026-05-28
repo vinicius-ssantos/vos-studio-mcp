@@ -34,6 +34,20 @@ class Settings(BaseSettings):
     oauth_issuer_url: str = Field(default="", alias="OAUTH_ISSUER_URL")
     oauth_client_id: str = Field(default="", alias="OAUTH_CLIENT_ID")
     oauth_client_secret: str = Field(default="", alias="OAUTH_CLIENT_SECRET")
+    mcp_oauth_issuer_url: str = Field(default="", alias="MCP_OAUTH_ISSUER_URL")
+    mcp_oauth_signing_key: str = Field(default="", alias="MCP_OAUTH_SIGNING_KEY")
+    mcp_oauth_authorization_secret: str = Field(
+        default="", alias="MCP_OAUTH_AUTHORIZATION_SECRET"
+    )
+    mcp_oauth_allowed_redirect_uris: str = Field(
+        default="", alias="MCP_OAUTH_ALLOWED_REDIRECT_URIS"
+    )
+    mcp_oauth_access_token_ttl_seconds: int = Field(
+        default=3600, alias="MCP_OAUTH_ACCESS_TOKEN_TTL_SECONDS"
+    )
+    mcp_oauth_auth_code_ttl_seconds: int = Field(
+        default=300, alias="MCP_OAUTH_AUTH_CODE_TTL_SECONDS"
+    )
     # Supabase HS256 mode: set this when using Supabase's default JWT secret (Project Settings → API → JWT Secret).
     # If OAUTH_ISSUER_URL is also set, JWKS validation takes precedence.
     supabase_jwt_secret: str = Field(default="", alias="SUPABASE_JWT_SECRET")

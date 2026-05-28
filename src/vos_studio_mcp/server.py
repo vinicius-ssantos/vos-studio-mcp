@@ -1,19 +1,21 @@
 """FastAPI/FastMCP application entrypoint."""
 
+import html
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import sentry_sdk
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from mcp.server.fastmcp import FastMCP
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
+from vos_studio_mcp.auth import oauth_native
 from vos_studio_mcp.auth.middleware import auth_middleware
 from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.errors import VosError
@@ -174,6 +176,8 @@ def _public_base_url(request: Request) -> str:
 
 def _oauth_issuer_url() -> str:
     """Return the delegated OAuth issuer URL, if configured."""
+    if settings.mcp_oauth_signing_key:
+        return oauth_native.issuer_url(settings)
     if settings.oauth_issuer_url:
         return settings.oauth_issuer_url
     if settings.supabase_url:
@@ -199,6 +203,13 @@ def _oauth_protected_resource_metadata(
     resource_path: str,
 ) -> dict[str, object]:
     """Build OAuth protected resource metadata."""
+    if settings.mcp_oauth_signing_key:
+        metadata = oauth_native.protected_resource_metadata(settings)
+        if resource_path != "/mcp":
+            metadata = dict(metadata)
+            metadata["resource"] = f"{_public_base_url(request)}{resource_path}"
+        return metadata
+
     issuer = _oauth_issuer_url()
     authorization_servers = [issuer] if issuer else []
     resource = f"{_public_base_url(request)}{resource_path}"
@@ -214,6 +225,9 @@ def _oauth_protected_resource_metadata(
 @app.get("/.well-known/oauth-authorization-server")
 async def oauth_authorization_server_metadata() -> dict[str, object]:
     """Expose delegated IdP metadata at the resource origin for client compatibility."""
+    if settings.mcp_oauth_signing_key:
+        return oauth_native.authorization_server_metadata(settings)
+
     issuer = _oauth_issuer_url()
     return {
         "issuer": issuer,
@@ -230,6 +244,198 @@ async def oauth_authorization_server_metadata() -> dict[str, object]:
             "none",
         ],
     }
+
+
+@app.get("/.well-known/oauth-authorization-server/mcp")
+async def oauth_authorization_server_mcp_metadata() -> dict[str, object]:
+    """Expose authorization metadata at the MCP path-specific discovery URL."""
+    return await oauth_authorization_server_metadata()
+
+
+@app.post("/oauth/register")
+async def oauth_register(request: Request) -> JSONResponse:
+    """Register a dynamic public OAuth client for ChatGPT."""
+    try:
+        payload = await request.json()
+        client = oauth_native.oauth_state.register_client(
+            redirect_uris=list(payload.get("redirect_uris", [])),
+            token_endpoint_auth_method=str(payload.get("token_endpoint_auth_method", "none")),
+            settings=settings,
+        )
+    except (RuntimeError, TypeError, ValueError) as exc:
+        return JSONResponse(
+            {"error": "invalid_client_metadata", "error_description": str(exc)},
+            status_code=400,
+        )
+
+    return JSONResponse(oauth_native.registration_response(client), status_code=201)
+
+
+@app.get("/oauth/authorize", response_class=HTMLResponse)
+async def oauth_authorize_get(request: Request) -> Response:
+    """Render owner approval form for native OAuth authorization."""
+    params = {key: values[0] for key, values in parse_qs(request.url.query).items()}
+    return _handle_oauth_authorize(params)
+
+
+@app.post("/oauth/authorize")
+async def oauth_authorize_post(request: Request) -> Response:
+    """Approve native OAuth authorization after owner secret submission."""
+    body = (await request.body()).decode("utf-8")
+    params = {key: values[0] for key, values in parse_qs(body).items()}
+    return _handle_oauth_authorize(params)
+
+
+@app.post("/oauth/token")
+async def oauth_token(request: Request) -> JSONResponse:
+    """Exchange authorization code for a native MCP bearer token."""
+    form = parse_qs((await request.body()).decode("utf-8"))
+    grant_type = _first(form, "grant_type")
+    if grant_type != "authorization_code":
+        return JSONResponse({"error": "unsupported_grant_type"}, status_code=400)
+
+    code_value = _first(form, "code")
+    redirect_uri = _first(form, "redirect_uri")
+    client_id = _first(form, "client_id")
+    code_verifier = _first(form, "code_verifier")
+    resource = _first(form, "resource")
+
+    if not code_value or not code_verifier:
+        return JSONResponse({"error": "invalid_request"}, status_code=400)
+
+    cached_response = oauth_native.oauth_state.get_cached_token_response(code_value)
+    if cached_response is not None:
+        return JSONResponse(cached_response)
+
+    code = oauth_native.oauth_state.consume_authorization_code(code_value)
+    if code is None or code.redirect_uri != redirect_uri or code.client_id != client_id:
+        return JSONResponse({"error": "invalid_grant"}, status_code=400)
+    if resource is not None and resource.rstrip("/") != code.resource:
+        return JSONResponse({"error": "invalid_target"}, status_code=400)
+    if not oauth_native.verify_pkce(
+        code_verifier=code_verifier,
+        code_challenge=code.code_challenge,
+        method=code.code_challenge_method,
+    ):
+        return JSONResponse({"error": "invalid_grant"}, status_code=400)
+
+    access_token = oauth_native.sign_access_token(
+        client_id=code.client_id,
+        scope=code.scope,
+        resource=code.resource,
+        settings=settings,
+    )
+    response = oauth_native.token_response(access_token=access_token, settings=settings)
+    oauth_native.oauth_state.cache_consumed_code_response(code_value, response)
+    return JSONResponse(response)
+
+
+def _handle_oauth_authorize(params: dict[str, str]) -> Response:
+    """Handle native OAuth authorize request."""
+    response_type = params.get("response_type")
+    client_id = params.get("client_id")
+    redirect_uri = params.get("redirect_uri")
+    state = params.get("state")
+    scope = params.get("scope") or "mcp"
+    code_challenge = params.get("code_challenge")
+    code_challenge_method = params.get("code_challenge_method") or "S256"
+    resource = params.get("resource") or oauth_native.resource_url(settings)
+    approval = params.get("approval")
+
+    client = oauth_native.oauth_state.get_client(client_id or "", settings)
+    if response_type != "code" or client is None or redirect_uri not in client.redirect_uris:
+        return JSONResponse({"error": "invalid_request"}, status_code=400)
+    if not code_challenge:
+        return JSONResponse(
+            {"error": "invalid_request", "error_description": "PKCE is required"},
+            status_code=400,
+        )
+    if not oauth_native.verify_owner_approval_secret(approval, settings):
+        if approval:
+            return JSONResponse(
+                {"error": "access_denied", "error_description": "Owner approval is required"},
+                status_code=403,
+            )
+        return HTMLResponse(_owner_approval_form(params))
+
+    try:
+        code = oauth_native.oauth_state.issue_authorization_code(
+            client_id=client.client_id,
+            redirect_uri=redirect_uri,
+            code_challenge=code_challenge,
+            code_challenge_method=code_challenge_method,
+            scope=scope,
+            resource=resource,
+            settings=settings,
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            {"error": "invalid_request", "error_description": str(exc)},
+            status_code=400,
+        )
+
+    return RedirectResponse(
+        oauth_native.authorization_redirect_url(
+            redirect_uri=redirect_uri,
+            code=code.code,
+            state=state,
+        ),
+        status_code=302,
+    )
+
+
+def _first(values: dict[str, list[str]], key: str) -> str | None:
+    """Return first parsed form value."""
+    items = values.get(key)
+    if not items:
+        return None
+    return items[0]
+
+
+def _owner_approval_form(params: dict[str, str]) -> str:
+    """Render native owner approval form."""
+    hidden_inputs = []
+    for key in (
+        "response_type",
+        "client_id",
+        "redirect_uri",
+        "state",
+        "scope",
+        "resource",
+        "code_challenge",
+        "code_challenge_method",
+    ):
+        value = params.get(key)
+        if value is not None:
+            hidden_inputs.append(
+                f'<input type="hidden" name="{html.escape(key)}" value="{html.escape(value)}">'
+            )
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Authorize VOS Studio MCP</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1rem; }}
+    label, input, button {{ display: block; width: 100%; box-sizing: border-box; }}
+    input {{ margin: .5rem 0 1rem; padding: .7rem; }}
+    button {{ padding: .8rem; cursor: pointer; }}
+    code {{ background: #f3f4f6; padding: .15rem .3rem; border-radius: .25rem; }}
+  </style>
+</head>
+<body>
+  <h1>Authorize VOS Studio MCP</h1>
+  <p>Enter the owner approval value configured in <code>MCP_OAUTH_AUTHORIZATION_SECRET</code>.</p>
+  <form method="post" action="/oauth/authorize">
+    {''.join(hidden_inputs)}
+    <label for="approval">Owner approval</label>
+    <input id="approval" name="approval" type="password" autocomplete="off" required>
+    <button type="submit">Authorize</button>
+  </form>
+</body>
+</html>"""
 
 
 @app.get("/oauth/consent", response_class=HTMLResponse)
