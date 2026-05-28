@@ -4,17 +4,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.asset_review import (
     AssetReviewCriteria,
     ReviewAssetInput,
     ReviewAssetResponse,
 )
 
-_CLIENT_ID = "aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa"
 _ASSET_ID = "aaaaaaaabbbbccccdddd1234567890ab"
 _SPRINT_ID = "00000000-0000-0000-0000-000000000001"
-_PATCH_AUTH = "vos_studio_mcp.tools.review_asset_quality.get_current_client_id"
 _PATCH_SERVICE = "vos_studio_mcp.tools.review_asset_quality._review_asset"
 
 
@@ -43,6 +40,17 @@ def _make_input(**kwargs) -> ReviewAssetInput:
     )
 
 
+def test_review_asset_input_accepts_agent_friendly_aliases() -> None:
+    data = ReviewAssetInput(
+        asset_id=_ASSET_ID,
+        sprint_id=_SPRINT_ID,
+        qa_status="approved",
+        performance_score=0.85,
+    )
+    assert data.reviewer_outcome == "approved"
+    assert data.performance_score == 0.85
+
+
 def _make_response(outcome: str = "approved") -> ReviewAssetResponse:
     return ReviewAssetResponse(
         status="reviewed",
@@ -52,28 +60,10 @@ def _make_response(outcome: str = "approved") -> ReviewAssetResponse:
         criteria_passed=["product_consistency"],
         criteria_failed=[],
         notes="",
-        approval_checklist=["✓ Product consistency verified"],
+        approval_checklist=["âœ“ Product consistency verified"],
         summary=f"Asset {_ASSET_ID[:8]}... {outcome}. 0 criteria failed.",
         next_action="promote_to_library" if outcome == "approved" else "register_manual_asset",
     )
-
-
-# ---------------------------------------------------------------------------
-# AUTH_REQUIRED when no client_id
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_auth_required_when_no_client_id() -> None:
-    from vos_studio_mcp.tools.review_asset_quality import register_review_asset_quality_tools
-
-    mock_mcp, captured = _make_mock_mcp()
-    register_review_asset_quality_tools(mock_mcp)
-
-    with patch(_PATCH_AUTH, return_value=None), pytest.raises(VosError) as exc_info:
-        await captured["review_asset_quality"](data=_make_input())
-
-    assert exc_info.value.error_code == ErrorCode.AUTH_REQUIRED
 
 
 # ---------------------------------------------------------------------------
@@ -91,13 +81,10 @@ async def test_approved_outcome_when_all_criteria_pass() -> None:
     mock_resp = _make_response("approved")
     data = _make_input(reviewer_outcome="approved")
 
-    with (
-        patch(_PATCH_AUTH, return_value=_CLIENT_ID),
-        patch(_PATCH_SERVICE, new=AsyncMock(return_value=mock_resp)) as mock_svc,
-    ):
+    with patch(_PATCH_SERVICE, new=AsyncMock(return_value=mock_resp)) as mock_svc:
         result = await captured["review_asset_quality"](data=data)
 
-    mock_svc.assert_awaited_once_with(_CLIENT_ID, data)
+    mock_svc.assert_awaited_once_with(data)
     assert result.outcome == "approved"
     assert result is mock_resp
 
@@ -131,10 +118,7 @@ async def test_needs_repair_auto_corrects_when_criteria_fail() -> None:
         reviewer_outcome="approved",
     )
 
-    with (
-        patch(_PATCH_AUTH, return_value=_CLIENT_ID),
-        patch(_PATCH_SERVICE, new=AsyncMock(return_value=mock_resp)),
-    ):
+    with patch(_PATCH_SERVICE, new=AsyncMock(return_value=mock_resp)):
         result = await captured["review_asset_quality"](data=data)
 
     assert result.outcome == "needs_repair"
@@ -161,7 +145,10 @@ async def test_rejected_returns_correct_next_action() -> None:
         criteria_passed=[],
         criteria_failed=["no_risky_claims"],
         notes="Makes unverifiable health claims",
-        approval_checklist=["✗ Asset rejected — do not promote", "Review notes: Makes unverifiable health claims"],
+        approval_checklist=[
+            "âœ— Asset rejected â€” do not promote",
+            "Review notes: Makes unverifiable health claims",
+        ],
         summary=f"Asset {_ASSET_ID[:8]}... rejected. 1 criteria failed.",
         next_action="create_creative_sprint",
     )
@@ -171,10 +158,7 @@ async def test_rejected_returns_correct_next_action() -> None:
         notes="Makes unverifiable health claims",
     )
 
-    with (
-        patch(_PATCH_AUTH, return_value=_CLIENT_ID),
-        patch(_PATCH_SERVICE, new=AsyncMock(return_value=mock_resp)),
-    ):
+    with patch(_PATCH_SERVICE, new=AsyncMock(return_value=mock_resp)):
         result = await captured["review_asset_quality"](data=data)
 
     assert result.outcome == "rejected"
@@ -187,7 +171,7 @@ async def test_rejected_returns_correct_next_action() -> None:
 
 
 @pytest.mark.asyncio
-async def test_tool_delegates_to_service_with_client_id() -> None:
+async def test_tool_delegates_to_service() -> None:
     from vos_studio_mcp.tools.review_asset_quality import register_review_asset_quality_tools
 
     mock_mcp, captured = _make_mock_mcp()
@@ -196,10 +180,7 @@ async def test_tool_delegates_to_service_with_client_id() -> None:
     mock_resp = _make_response("approved")
     data = _make_input()
 
-    with (
-        patch(_PATCH_AUTH, return_value=_CLIENT_ID),
-        patch(_PATCH_SERVICE, new=AsyncMock(return_value=mock_resp)) as mock_svc,
-    ):
+    with patch(_PATCH_SERVICE, new=AsyncMock(return_value=mock_resp)) as mock_svc:
         await captured["review_asset_quality"](data=data)
 
-    mock_svc.assert_awaited_once_with(_CLIENT_ID, data)
+    mock_svc.assert_awaited_once_with(data)
