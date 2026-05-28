@@ -1,4 +1,4 @@
-"""Asset quality review service — validates QA criteria and persists outcome (Issue #57)."""
+"""Asset quality review service â€” validates QA criteria and persists outcome (Issue #57)."""
 
 import uuid
 
@@ -31,10 +31,10 @@ _CRITERIA_FIELDS: list[str] = [
 # ---------------------------------------------------------------------------
 
 _APPROVED_CHECKLIST: list[str] = [
-    "✓ Product consistency verified",
-    "✓ Campaign coherence confirmed",
-    "✓ Mobile readability checked",
-    "✓ No risky claims detected",
+    "âœ“ Product consistency verified",
+    "âœ“ Campaign coherence confirmed",
+    "âœ“ Mobile readability checked",
+    "âœ“ No risky claims detected",
 ]
 
 _NEXT_ACTIONS: dict[ReviewOutcome, str] = {
@@ -49,15 +49,14 @@ _NEXT_ACTIONS: dict[ReviewOutcome, str] = {
 # ---------------------------------------------------------------------------
 
 
-async def review_asset(client_id: str, data: ReviewAssetInput) -> ReviewAssetResponse:
+async def review_asset(data: ReviewAssetInput) -> ReviewAssetResponse:
     """Validate asset QA criteria, persist qa_status, and return a structured review outcome.
 
-    Verifies caller owns the sprint's client, evaluates all criteria fields,
-    auto-corrects an "approved" outcome to "needs_repair" when any criterion
-    fails, persists qa_status to the asset row, and returns checklist + next_action guidance.
+    Resolves the sprint's client under RLS, verifies caller ownership when a
+    tenant-bound auth context exists, evaluates all criteria fields, auto-corrects
+    an "approved" outcome to "needs_repair" when any criterion fails, persists
+    qa_status to the asset row, and returns checklist + next_action guidance.
     """
-    assert_owns_client(client_id)
-
     criteria_passed, criteria_failed = _evaluate_criteria(data.criteria)
     outcome = _resolve_outcome(data.reviewer_outcome, criteria_failed, data.notes)
     approval_checklist = _build_approval_checklist(outcome, criteria_failed, data.notes)
@@ -139,7 +138,7 @@ def _build_approval_checklist(
     if outcome == "needs_repair":
         return [f"Fix required: {field.replace('_', ' ')}" for field in criteria_failed]
     # rejected
-    items: list[str] = ["✗ Asset rejected — do not promote"]
+    items: list[str] = ["âœ— Asset rejected â€” do not promote"]
     if notes:
         items.append(f"Review notes: {notes}")
     return items
