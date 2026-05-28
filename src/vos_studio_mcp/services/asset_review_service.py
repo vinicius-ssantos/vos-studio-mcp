@@ -44,6 +44,18 @@ _NEXT_ACTIONS: dict[ReviewOutcome, str] = {
 }
 
 
+def _score_to_percent(score: float | None) -> int | None:
+    if score is None:
+        return None
+    return round(score * 100)
+
+
+def _score_from_percent(score: int | None) -> float | None:
+    if score is None:
+        return None
+    return score / 100
+
+
 # ---------------------------------------------------------------------------
 # Public service function
 # ---------------------------------------------------------------------------
@@ -64,13 +76,9 @@ async def review_asset(data: ReviewAssetInput) -> ReviewAssetResponse:
     # Persist qa_status to the asset row under the sprint's RLS tenant context.
     async with get_session() as session:
         try:
-            client_id_from_sprint = await set_tenant_context_from_sprint(
-                session, data.sprint_id
-            )
+            client_id_from_sprint = await set_tenant_context_from_sprint(session, data.sprint_id)
         except LookupError as exc:
-            raise VosError(
-                ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found"
-            ) from exc
+            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found") from exc
         assert_owns_client(client_id_from_sprint)
 
         asset = await session.get(Asset, uuid.UUID(data.asset_id))
@@ -78,18 +86,23 @@ async def review_asset(data: ReviewAssetInput) -> ReviewAssetResponse:
             raise VosError(ErrorCode.NOT_FOUND, f"Asset {data.asset_id} not found")
 
         asset.qa_status = outcome
+        if data.performance_score is not None:
+            asset.performance_score = _score_to_percent(data.performance_score)
+        response_score = (
+            data.performance_score
+            if data.performance_score is not None
+            else _score_from_percent(asset.performance_score)
+        )
         await session.commit()
 
-    summary = (
-        f"Asset {data.asset_id[:8]}... {outcome}. "
-        f"{len(criteria_failed)} criteria failed."
-    )
+    summary = f"Asset {data.asset_id[:8]}... {outcome}. {len(criteria_failed)} criteria failed."
 
     return ReviewAssetResponse(
         status="reviewed",
         asset_id=data.asset_id,
         sprint_id=data.sprint_id,
         outcome=outcome,
+        performance_score=response_score,
         criteria_passed=criteria_passed,
         criteria_failed=criteria_failed,
         notes=data.notes,

@@ -41,6 +41,26 @@ def _str_list(memory: dict[str, object], key: str) -> list[str]:
     return []
 
 
+def _resolve_status_next_action(
+    sprint_status: str,
+    alert: bool,
+    assets: list[Asset],
+) -> str:
+    if sprint_status != "open":
+        return "no_action_sprint_closed"
+    if alert:
+        return "review_budget_before_continuing"
+    if any(a.is_final_delivery and a.qa_status == "approved" for a in assets):
+        return "close_sprint"
+    if any(a.qa_status is None or a.qa_status == "needs_review" for a in assets):
+        return "review_asset_quality"
+    if any(a.asset_stage == "stage_0" and a.qa_status == "approved" for a in assets):
+        return "prepare_execution_pack"
+    if any(a.qa_status == "needs_repair" for a in assets):
+        return "register_manual_asset"
+    return "prepare_dashboard_pack"
+
+
 async def _find_idempotent_sprint(
     session: object, client_id: str, idempotency_key: str
 ) -> Sprint | None:
@@ -72,9 +92,7 @@ async def create_creative_sprint(data: SprintInput) -> SprintResponse:
                         "idempotency_key": data.idempotency_key,
                     },
                 )
-                alert = (
-                    existing.spent_usd >= existing.max_spend_usd * existing.alert_threshold_pct
-                )
+                alert = existing.spent_usd >= existing.max_spend_usd * existing.alert_threshold_pct
                 return SprintResponse(
                     status="created",
                     sprint_id=str(existing.id),
@@ -228,15 +246,12 @@ async def get_sprint_status(sprint_id: str) -> SprintStatusResponse:
         )
         asset_count = asset_count_result.scalar_one()
 
+        assets_result = await session.execute(select(Asset).where(Asset.sprint_id == sprint_uuid))
+        assets = list(assets_result.scalars().all())
+
     alert = sprint.spent_usd >= sprint.max_spend_usd * sprint.alert_threshold_pct
     remaining = sprint.max_spend_usd - sprint.spent_usd
-
-    if sprint.sprint_status == "open" and not alert:
-        next_action = "prepare_dashboard_pack"
-    elif alert:
-        next_action = "review_budget_before_continuing"
-    else:
-        next_action = "no_action_sprint_closed"
+    next_action = _resolve_status_next_action(sprint.sprint_status, alert, assets)
 
     return SprintStatusResponse(
         status="ok",
@@ -339,9 +354,7 @@ async def get_sprint_performance_summary(
                 asset_stage_label=_ASSET_STAGE_LABELS.get(stage),
                 total_assets=len(stage_assets),
                 approved_count=sum(1 for a in stage_assets if a.qa_status == "approved"),
-                needs_repair_count=sum(
-                    1 for a in stage_assets if a.qa_status == "needs_repair"
-                ),
+                needs_repair_count=sum(1 for a in stage_assets if a.qa_status == "needs_repair"),
                 rejected_count=sum(1 for a in stage_assets if a.qa_status == "rejected"),
                 avg_performance_score=sum(scores) / len(scores) if scores else None,
             )
