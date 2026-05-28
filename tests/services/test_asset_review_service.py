@@ -60,11 +60,11 @@ def _call(data: ReviewAssetInput, asset: MagicMock | None = None):  # type: igno
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
         import asyncio
-        return asyncio.get_event_loop().run_until_complete(review_asset(_CLIENT_ID, data))
+        return asyncio.get_event_loop().run_until_complete(review_asset(data))
 
 
 # ---------------------------------------------------------------------------
-# All criteria passed → approved
+# All criteria passed -> approved
 # ---------------------------------------------------------------------------
 
 
@@ -86,7 +86,7 @@ async def test_all_criteria_passed_returns_approved() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert result.outcome == "approved"
     assert result.status == "reviewed"
     assert result.criteria_failed == []
@@ -94,7 +94,7 @@ async def test_all_criteria_passed_returns_approved() -> None:
 
 
 # ---------------------------------------------------------------------------
-# One criterion failed → auto-corrects to needs_repair when reviewer says approved
+# One criterion failed -> auto-corrects to needs_repair when reviewer says approved
 # ---------------------------------------------------------------------------
 
 
@@ -109,12 +109,12 @@ async def test_one_criteria_failed_auto_corrects_to_needs_repair() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert result.outcome == "needs_repair"
 
 
 # ---------------------------------------------------------------------------
-# Explicit rejected → rejected regardless of criteria
+# Explicit rejected -> rejected regardless of criteria
 # ---------------------------------------------------------------------------
 
 
@@ -126,7 +126,7 @@ async def test_explicit_rejected_ignores_criteria() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert result.outcome == "rejected"
     assert result.next_action == "create_creative_sprint"
 
@@ -150,7 +150,7 @@ async def test_criteria_failed_list_contains_failed_field_names() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert "product_consistency" in result.criteria_failed
     assert "label_accuracy" in result.criteria_failed
     assert len(result.criteria_failed) == 2
@@ -170,7 +170,7 @@ async def test_criteria_passed_list_contains_passed_field_names() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert "product_consistency" in result.criteria_passed
     assert "label_accuracy" in result.criteria_passed
     assert len(result.criteria_passed) == 4
@@ -189,7 +189,7 @@ async def test_approved_checklist_has_expected_items() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     checklist_text = " ".join(result.approval_checklist)
     assert "Product consistency" in checklist_text
     assert "Mobile readability" in checklist_text
@@ -207,7 +207,7 @@ async def test_needs_repair_checklist_lists_failed_criteria() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert result.outcome == "needs_repair"
     assert len(result.approval_checklist) >= 1
     assert any("product" in item.lower() for item in result.approval_checklist)
@@ -221,7 +221,7 @@ async def test_rejected_checklist_has_rejection_message() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     checklist_text = " ".join(result.approval_checklist)
     assert "rejected" in checklist_text.lower()
     assert "Off-brand imagery" in checklist_text
@@ -240,7 +240,7 @@ async def test_approved_next_action_is_promote_to_library() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert result.next_action == "promote_to_library"
 
 
@@ -255,7 +255,7 @@ async def test_needs_repair_next_action_is_register_manual_asset() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert result.next_action == "register_manual_asset"
 
 
@@ -267,7 +267,7 @@ async def test_rejected_next_action_is_create_creative_sprint() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert result.next_action == "create_creative_sprint"
 
 
@@ -285,7 +285,7 @@ async def test_summary_contains_asset_id_prefix() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset(asset_id))),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert asset_id[:8] in result.summary
 
 
@@ -297,7 +297,7 @@ async def test_summary_contains_outcome() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset())),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert "approved" in result.summary
 
 
@@ -322,7 +322,7 @@ async def test_qa_status_is_written_to_asset() -> None:
         patch(_GET_SESSION, return_value=ctx),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
 
     assert asset.qa_status == result.outcome
     session.commit.assert_awaited_once()
@@ -343,6 +343,6 @@ async def test_response_contains_correct_asset_and_sprint_ids() -> None:
         patch(_GET_SESSION, return_value=_session_ctx(_mock_asset(asset_id))),
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
-        result = await review_asset(_CLIENT_ID, data)
+        result = await review_asset(data)
     assert result.asset_id == asset_id
     assert result.sprint_id == sprint_id
