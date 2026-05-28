@@ -3,10 +3,12 @@
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.exc import InternalError as SAInternalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from db.models import Asset
 from vos_studio_mcp.config.env import get_settings
@@ -16,7 +18,11 @@ _engine = create_async_engine(
     get_settings().database_url,
     echo=False,
     pool_pre_ping=True,
-    connect_args={"prepared_statement_cache_size": 0},
+    poolclass=NullPool,
+    connect_args={
+        "prepared_statement_cache_size": 0,
+        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+    },
 )
 _session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
     _engine, expire_on_commit=False
