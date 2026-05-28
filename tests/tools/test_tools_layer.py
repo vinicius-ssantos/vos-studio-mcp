@@ -80,6 +80,8 @@ _EXPECTED_TOOLS = {
     "refresh_library_tiers",
     "get_client_performance_summary",
     "list_higgsfield_mcp_capabilities",
+    "check_generation_readiness",
+    "get_workflow_guide",
 }
 
 

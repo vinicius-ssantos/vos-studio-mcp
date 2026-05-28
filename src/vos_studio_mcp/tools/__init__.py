@@ -2,6 +2,9 @@
 
 from mcp.server.fastmcp import FastMCP
 
+from vos_studio_mcp.tools.check_generation_readiness import (
+    register_check_generation_readiness_tools,
+)
 from vos_studio_mcp.tools.close_sprint import register_close_sprint_tools
 from vos_studio_mcp.tools.conclude_variant_test import register_conclude_variant_test_tools
 from vos_studio_mcp.tools.create_client import register_create_client_tools
@@ -18,6 +21,7 @@ from vos_studio_mcp.tools.get_sprint_performance_summary import (
 )
 from vos_studio_mcp.tools.get_sprint_status import register_get_sprint_status_tools
 from vos_studio_mcp.tools.get_video_job_status import register_get_video_job_status_tools
+from vos_studio_mcp.tools.get_workflow_guide import register_get_workflow_guide_tools
 from vos_studio_mcp.tools.list_higgsfield_mcp_capabilities import (
     register_list_higgsfield_mcp_capabilities_tools,
 )
@@ -78,3 +82,5 @@ def register_tools(mcp: FastMCP) -> None:
     register_prepare_execution_pack_tools(mcp)
     register_get_client_performance_summary_tools(mcp)
     register_list_higgsfield_mcp_capabilities_tools(mcp)
+    register_check_generation_readiness_tools(mcp)
+    register_get_workflow_guide_tools(mcp)
