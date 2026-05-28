@@ -82,6 +82,7 @@ _GET_TOP_PERFORMERS = "vos_studio_mcp.services.sprint_service.get_top_performers
 def _mock_sprint_orm(**kwargs: object) -> MagicMock:
     s = MagicMock()
     s.id = uuid.uuid4()
+    s.client_id = kwargs.get("client_id", uuid.uuid4())
     s.product_name = kwargs.get("product_name", "Summer Campaign")
     s.mode = kwargs.get("mode", "dashboard_manual")
     s.sprint_status = kwargs.get("sprint_status", "open")
@@ -106,6 +107,7 @@ def _sprint_ctx(
     asset_count: int = 0,
     new_id: uuid.UUID | None = None,
     has_final_approved: bool = True,
+    assets: list[object] | None = None,
 ) -> MagicMock:
     _new_id = new_id or uuid.uuid4()
     session = AsyncMock()
@@ -118,6 +120,7 @@ def _sprint_ctx(
     final_asset_result = MagicMock()
     approved_asset = MagicMock() if has_final_approved else None
     final_asset_result.scalars.return_value.first.return_value = approved_asset
+    final_asset_result.scalars.return_value.all.return_value = assets or []
 
     # Return different mock on each call: first call → scalar count, second → final asset check
     session.execute = AsyncMock(side_effect=[scalar_count_result, final_asset_result])
@@ -130,6 +133,18 @@ def _sprint_ctx(
     ctx.__aenter__ = AsyncMock(return_value=session)
     ctx.__aexit__ = AsyncMock(return_value=False)
     return ctx
+
+
+def _status_asset(
+    asset_stage: str | None = None,
+    qa_status: str | None = None,
+    is_final_delivery: bool = False,
+) -> MagicMock:
+    asset = MagicMock()
+    asset.asset_stage = asset_stage
+    asset.qa_status = qa_status
+    asset.is_final_delivery = is_final_delivery
+    return asset
 
 
 def _close_sprint_ctx(
@@ -190,8 +205,12 @@ async def test_create_creative_sprint_with_variant_groups() -> None:
                 hypothesis="Bold vs subtle",
                 variable="tone",
                 variants=[
-                    VariantInput(label="A", description="Bold", prompt_version="v1", preset_version="p1"),
-                    VariantInput(label="B", description="Subtle", prompt_version="v1", preset_version="p1"),
+                    VariantInput(
+                        label="A", description="Bold", prompt_version="v1", preset_version="p1"
+                    ),
+                    VariantInput(
+                        label="B", description="Subtle", prompt_version="v1", preset_version="p1"
+                    ),
                 ],
             )
         ],
@@ -305,13 +324,62 @@ async def test_get_sprint_status_budget_alert() -> None:
 async def test_get_sprint_status_closed_sprint_next_action() -> None:
     from vos_studio_mcp.services.sprint_service import get_sprint_status
 
-    sprint = _mock_sprint_orm(sprint_status="closed", spent_usd=0.0, max_spend_usd=100.0, alert_threshold_pct=0.8)
+    sprint = _mock_sprint_orm(
+        sprint_status="closed", spent_usd=0.0, max_spend_usd=100.0, alert_threshold_pct=0.8
+    )
     ctx = _sprint_ctx(sprint=sprint)
 
     with patch(_GET_SESSION, return_value=ctx):
         result = await get_sprint_status(str(uuid.uuid4()))
 
     assert result.next_action == "no_action_sprint_closed"
+
+
+@pytest.mark.asyncio
+async def test_get_sprint_status_routes_unreviewed_assets_to_qa() -> None:
+    from vos_studio_mcp.services.sprint_service import get_sprint_status
+
+    sprint = _mock_sprint_orm(sprint_status="open", max_spend_usd=100.0, spent_usd=0.0)
+    ctx = _sprint_ctx(sprint=sprint, asset_count=1, assets=[_status_asset("stage_0", None)])
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await get_sprint_status(str(uuid.uuid4()))
+
+    assert result.next_action == "review_asset_quality"
+
+
+@pytest.mark.asyncio
+async def test_get_sprint_status_stage_0_approved_routes_to_execution_pack() -> None:
+    from vos_studio_mcp.services.sprint_service import get_sprint_status
+
+    sprint = _mock_sprint_orm(sprint_status="open", max_spend_usd=100.0, spent_usd=0.0)
+    ctx = _sprint_ctx(
+        sprint=sprint,
+        asset_count=1,
+        assets=[_status_asset("stage_0", "approved")],
+    )
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await get_sprint_status(str(uuid.uuid4()))
+
+    assert result.next_action == "prepare_execution_pack"
+
+
+@pytest.mark.asyncio
+async def test_get_sprint_status_final_approved_routes_to_close_sprint() -> None:
+    from vos_studio_mcp.services.sprint_service import get_sprint_status
+
+    sprint = _mock_sprint_orm(sprint_status="open", max_spend_usd=100.0, spent_usd=0.0)
+    ctx = _sprint_ctx(
+        sprint=sprint,
+        asset_count=1,
+        assets=[_status_asset("final", "approved", is_final_delivery=True)],
+    )
+
+    with patch(_GET_SESSION, return_value=ctx):
+        result = await get_sprint_status(str(uuid.uuid4()))
+
+    assert result.next_action == "close_sprint"
 
 
 @pytest.mark.asyncio
@@ -475,6 +543,7 @@ async def test_get_sprint_performance_summary_not_found() -> None:
 
 def _make_sprint_orm_with_date(**kwargs: object) -> MagicMock:
     import datetime as dt
+
     s = _mock_sprint_orm(**kwargs)
     s.created_at = dt.datetime(2026, 5, 1, tzinfo=dt.UTC)
     return s

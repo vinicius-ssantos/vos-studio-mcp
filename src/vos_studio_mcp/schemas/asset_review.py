@@ -44,6 +44,7 @@ class ReviewAssetResponse(BaseModel):
     asset_id: str
     sprint_id: str
     outcome: ReviewOutcome
+    performance_score: float | None = None
     criteria_passed: list[str]
     criteria_failed: list[str]
     notes: str

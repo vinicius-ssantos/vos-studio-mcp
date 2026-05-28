@@ -29,6 +29,7 @@ def _make_input(**kwargs: object) -> ReviewAssetInput:
         criteria=kwargs.get("criteria", AssetReviewCriteria()),  # type: ignore[arg-type]
         notes=str(kwargs.get("notes", "")),
         reviewer_outcome=kwargs.get("reviewer_outcome", "approved"),  # type: ignore[arg-type]
+        performance_score=kwargs.get("performance_score"),  # type: ignore[arg-type]
     )
 
 
@@ -36,6 +37,7 @@ def _mock_asset(asset_id: str = _ASSET_ID) -> MagicMock:
     asset = MagicMock()
     asset.id = uuid.UUID(asset_id)
     asset.qa_status = None
+    asset.performance_score = None
     return asset
 
 
@@ -60,6 +62,7 @@ def _call(data: ReviewAssetInput, asset: MagicMock | None = None):  # type: igno
         patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
     ):
         import asyncio
+
         return asyncio.get_event_loop().run_until_complete(review_asset(data))
 
 
@@ -326,6 +329,44 @@ async def test_qa_status_is_written_to_asset() -> None:
 
     assert asset.qa_status == result.outcome
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_performance_score_is_persisted_and_returned() -> None:
+    asset = _mock_asset()
+    data = _make_input(reviewer_outcome="approved", performance_score=0.85)
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=asset)
+    session.commit = AsyncMock()
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_GUARD),
+        patch(_GET_SESSION, return_value=ctx),
+        patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
+    ):
+        result = await review_asset(data)
+
+    assert asset.performance_score == 85
+    assert result.performance_score == 0.85
+
+
+@pytest.mark.asyncio
+async def test_existing_performance_score_is_returned_when_not_overwritten() -> None:
+    asset = _mock_asset()
+    asset.performance_score = 72
+    data = _make_input(reviewer_outcome="approved")
+
+    with (
+        patch(_GUARD),
+        patch(_GET_SESSION, return_value=_session_ctx(asset)),
+        patch(_SET_TENANT, new_callable=AsyncMock, return_value=_CLIENT_ID),
+    ):
+        result = await review_asset(data)
+
+    assert result.performance_score == 0.72
 
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,10 @@ log = logging.getLogger(__name__)
 
 
 async def register_manual_asset(data: AssetInput) -> AssetResponse:
+    storage_url = data.storage_url
+    if storage_url is None:
+        raise VosError(ErrorCode.INVALID_INPUT, "storage_url or uri is required")
+
     async with get_session() as session:
         # Resolve sprint ownership, set RLS tenant context, and assert caller owns the sprint.
         try:
@@ -33,13 +37,12 @@ async def register_manual_asset(data: AssetInput) -> AssetResponse:
 
         source_uuid = uuid.UUID(data.source_asset_id) if data.source_asset_id else None
 
-
         asset = Asset(
             sprint_id=uuid.UUID(data.sprint_id),
             provider=data.provider,
             prompt_version=data.prompt_version,
             preset_version=data.preset_version,
-            storage_url=data.storage_url,
+            storage_url=storage_url,
             preview_url=data.preview_url,
             width=data.width,
             height=data.height,
@@ -81,9 +84,7 @@ async def register_manual_asset(data: AssetInput) -> AssetResponse:
         status="registered",
         asset_id=str(asset.id),
         sprint_id=data.sprint_id,
-        summary=(
-            f"Asset registered for sprint {data.sprint_id} via {data.provider}{stage_note}."
-        ),
+        summary=(f"Asset registered for sprint {data.sprint_id} via {data.provider}{stage_note}."),
         next_action="register_manual_asset",
     )
 

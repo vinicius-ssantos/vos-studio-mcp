@@ -65,6 +65,20 @@ def test_asset_input_accepts_agent_friendly_aliases() -> None:
     assert data.format == "image/png"
 
 
+def test_asset_input_schema_allows_alias_only_payload() -> None:
+    schema = AssetInput.model_json_schema()
+    required = set(schema.get("required", []))
+
+    assert "storage_url" not in required
+    assert "uri" in schema["properties"]
+    assert "mime_type" in schema["properties"]
+
+
+def test_asset_input_requires_storage_url_or_uri() -> None:
+    with pytest.raises(ValidationError, match="storage_url or uri is required"):
+        AssetInput(sprint_id="s", provider="manual")
+
+
 def test_asset_input_accepts_all_kinds() -> None:
     for kind in ("generated", "manual", "upscaled"):
         data = AssetInput(

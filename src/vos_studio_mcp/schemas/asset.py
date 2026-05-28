@@ -26,11 +26,22 @@ class AssetInput(BaseModel):
     provider: str
     prompt_version: str = "v1"
     preset_version: str = "p1"
-    storage_url: str
+    storage_url: str | None = Field(
+        default=None,
+        description="Canonical storage URL for the externally hosted asset.",
+    )
+    uri: str | None = Field(
+        default=None,
+        description="Agent-friendly alias for storage_url.",
+    )
     preview_url: str | None = None
     width: int | None = None
     height: int | None = None
     format: str | None = None
+    mime_type: str | None = Field(
+        default=None,
+        description="Agent-friendly alias for format.",
+    )
     notes: str | None = None
     # Stage / lineage (Issue #53)
     asset_stage: AssetStage | None = Field(
@@ -66,6 +77,13 @@ class AssetInput(BaseModel):
         if "format" not in data and "mime_type" in data:
             data["format"] = data["mime_type"]
         return data
+
+    @model_validator(mode="after")
+    def require_storage_reference(self) -> "AssetInput":
+        """Require either canonical storage_url or its agent-friendly uri alias."""
+        if not self.storage_url:
+            raise ValueError("storage_url or uri is required")
+        return self
 
 
 class AssetReference(BaseModel):
