@@ -171,7 +171,11 @@ async def _deliver(
     if signature:
         headers["X-VOS-Signature"] = signature
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+    # follow_redirects stays False: a redirect could send the signed payload to
+    # an unvalidated (potentially internal) target, bypassing the SSRF guard above.
+    async with httpx.AsyncClient(
+        timeout=_TIMEOUT_SECONDS, follow_redirects=False
+    ) as client:
         response = await client.post(webhook_url, content=body, headers=headers)
 
     # Raise so that _deliver_async (Celery path) can retry on non-2xx.

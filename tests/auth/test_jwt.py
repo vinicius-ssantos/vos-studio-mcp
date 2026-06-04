@@ -115,6 +115,49 @@ async def test_symmetric_algorithm_rejected() -> None:
     assert await validate_bearer_token(tok, _ISSUER) is None
 
 
+@respx.mock
+async def test_returns_none_when_nbf_in_future() -> None:
+    """A token whose not-before is in the future must be rejected."""
+    respx.get(_JWKS_URL).mock(return_value=Response(200, json=_jwks()))
+    tok = _token({"sub": "user-1", "nbf": int(time.time()) + 3600})
+    assert await validate_bearer_token(tok, _ISSUER) is None
+
+
+# ---------------------------------------------------------------------------
+# audience validation (opt-in via OAUTH_AUDIENCE)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_audience_not_checked_when_not_configured() -> None:
+    """With no expected audience, the aud claim is ignored (backward compatible)."""
+    respx.get(_JWKS_URL).mock(return_value=Response(200, json=_jwks()))
+    tok = _token({"sub": "user-1", "aud": "some-other-api", "exp": int(time.time()) + 3600})
+    assert await validate_bearer_token(tok, _ISSUER) == "user-1"
+
+
+@respx.mock
+async def test_audience_match_accepted() -> None:
+    respx.get(_JWKS_URL).mock(return_value=Response(200, json=_jwks()))
+    tok = _token({"sub": "user-1", "aud": "vos-mcp", "exp": int(time.time()) + 3600})
+    assert await validate_bearer_token(tok, _ISSUER, "vos-mcp") == "user-1"
+
+
+@respx.mock
+async def test_audience_match_accepted_when_aud_is_list() -> None:
+    respx.get(_JWKS_URL).mock(return_value=Response(200, json=_jwks()))
+    tok = _token({"sub": "user-1", "aud": ["a", "vos-mcp"], "exp": int(time.time()) + 3600})
+    assert await validate_bearer_token(tok, _ISSUER, "vos-mcp") == "user-1"
+
+
+@respx.mock
+async def test_audience_mismatch_rejected() -> None:
+    """A token minted for another resource (different aud) must be rejected."""
+    respx.get(_JWKS_URL).mock(return_value=Response(200, json=_jwks()))
+    tok = _token({"sub": "user-1", "aud": "other-api", "exp": int(time.time()) + 3600})
+    assert await validate_bearer_token(tok, _ISSUER, "vos-mcp") is None
+
+
 # ---------------------------------------------------------------------------
 # JWKS TTL cache
 # ---------------------------------------------------------------------------
