@@ -112,6 +112,17 @@ def upgrade() -> None:
         $$
     """)
 
+    # PostgreSQL grants EXECUTE to PUBLIC by default on new functions. Because
+    # these are SECURITY DEFINER and bypass RLS, leaving the PUBLIC grant would
+    # let any role with DB access (e.g. Supabase/PostgREST anon/authenticated)
+    # invoke them to read cross-tenant data — including a client's webhook_url
+    # via vos_get_asset_notification_context. Revoke PUBLIC first, then grant
+    # only to the app role (deny-by-default).
+    op.execute("REVOKE EXECUTE ON FUNCTION vos_get_asset_client_id(UUID) FROM PUBLIC")
+    op.execute("REVOKE EXECUTE ON FUNCTION vos_get_sprint_client_id(UUID) FROM PUBLIC")
+    op.execute("REVOKE EXECUTE ON FUNCTION vos_get_asset_notification_context(UUID) FROM PUBLIC")
+    op.execute("REVOKE EXECUTE ON FUNCTION vos_get_asset_by_job_id(TEXT) FROM PUBLIC")
+
     # Grant EXECUTE to the non-privileged app role when it exists.
     # On Supabase production, grant to the Supabase authenticated role manually.
     op.execute("""
