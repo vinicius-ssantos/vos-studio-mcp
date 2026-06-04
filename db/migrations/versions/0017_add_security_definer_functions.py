@@ -8,6 +8,11 @@ still resolving the asset owner before any RLS tenant context is available.
 After this migration the application no longer needs SET row_security = off
 on the main connection (ADR-0040).
 
+Each function pins ``search_path = pg_catalog, public`` so a caller cannot
+prepend a schema and shadow the unqualified ``assets`` / ``sprints`` /
+``clients`` references — the standard hardening for SECURITY DEFINER
+functions against search_path injection.
+
 Revision ID: 3c4d5e6f7a8b
 Revises: 2b3c4d5e6f7a
 Create Date: 2026-06-04 00:00:00.000000
@@ -36,6 +41,7 @@ def upgrade() -> None:
         LANGUAGE sql
         SECURITY DEFINER
         STABLE
+        SET search_path = pg_catalog, public
         AS $$
             SELECT s.client_id
             FROM assets a
@@ -55,6 +61,7 @@ def upgrade() -> None:
         LANGUAGE sql
         SECURITY DEFINER
         STABLE
+        SET search_path = pg_catalog, public
         AS $$
             SELECT client_id FROM sprints WHERE id = p_sprint_id LIMIT 1;
         $$
@@ -71,6 +78,7 @@ def upgrade() -> None:
         LANGUAGE sql
         SECURITY DEFINER
         STABLE
+        SET search_path = pg_catalog, public
         AS $$
             SELECT a.sprint_id, s.client_id, c.webhook_url
             FROM assets a
@@ -81,8 +89,6 @@ def upgrade() -> None:
         $$
     """)
 
-    # Grant EXECUTE to the non-privileged app role when it exists.
-    # On Supabase production, grant to the Supabase authenticated role manually.
     # ------------------------------------------------------------------
     # vos_get_asset_by_job_id
     #   Returns (asset_id, client_id) for the asset matching a
@@ -96,6 +102,7 @@ def upgrade() -> None:
         LANGUAGE sql
         SECURITY DEFINER
         STABLE
+        SET search_path = pg_catalog, public
         AS $$
             SELECT a.id, s.client_id
             FROM assets a
@@ -105,6 +112,8 @@ def upgrade() -> None:
         $$
     """)
 
+    # Grant EXECUTE to the non-privileged app role when it exists.
+    # On Supabase production, grant to the Supabase authenticated role manually.
     op.execute("""
         DO $$
         BEGIN

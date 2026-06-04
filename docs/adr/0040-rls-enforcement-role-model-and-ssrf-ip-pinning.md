@@ -73,6 +73,10 @@ by pinning `follow_redirects=False`.)
   - **Preferred:** `SECURITY DEFINER` SQL functions owned by a privileged role
     that return only the minimal columns needed (`client_id`, `sprint_id`,
     `webhook_url`), callable by the app role. RLS stays on for everything else.
+    Each such function MUST pin `search_path` (e.g. `pg_catalog, public`) so a
+    caller cannot prepend a writable schema and shadow the unqualified table
+    references — the standard hardening against `SECURITY DEFINER` search_path
+    injection.
   - **Alternative:** a separate, narrowly-scoped engine/connection using a
     privileged role, used *only* by the webhook ingress lookups.
 
