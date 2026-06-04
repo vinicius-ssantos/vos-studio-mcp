@@ -1,8 +1,8 @@
 """Unit tests for services/database.py helper functions.
 
 get_session, get_asset_with_client, set_tenant_context_from_sprint,
-bypass_rls, and set_tenant_context are tested with mocked AsyncSession
-objects so no real database is required.
+bypass_rls, get_asset_by_job_id, and set_tenant_context are tested with
+mocked AsyncSession objects so no real database is required.
 """
 
 import uuid
@@ -20,6 +20,20 @@ from vos_studio_mcp.errors import ErrorCode, VosError
 _CLIENT_ID = "00000000-0000-0000-0000-000000000001"
 
 
+def _scalar_result(value: object) -> MagicMock:
+    """Return a mock execute() result where scalar_one_or_none() returns *value*."""
+    r = MagicMock()
+    r.scalar_one_or_none = MagicMock(return_value=value)
+    return r
+
+
+def _row_result(row: object) -> MagicMock:
+    """Return a mock execute() result where first() returns *row*."""
+    r = MagicMock()
+    r.first = MagicMock(return_value=row)
+    return r
+
+
 def _make_session(*execute_returns: object, get_return: object = None) -> AsyncMock:
     """Return an AsyncMock session whose execute() calls return execute_returns in order."""
     session = AsyncMock()
@@ -27,11 +41,6 @@ def _make_session(*execute_returns: object, get_return: object = None) -> AsyncM
     session.get = AsyncMock(return_value=get_return)
     session.commit = AsyncMock()
     return session
-
-
-def _row(value: str) -> tuple:
-    """Minimal tuple simulating a single-column SQLAlchemy row."""
-    return (value,)
 
 
 # ---------------------------------------------------------------------------
@@ -139,14 +148,9 @@ async def test_get_asset_with_client_returns_asset_and_client_id() -> None:
     asset_id = str(uuid.uuid4())
     asset_mock = MagicMock()
 
-    result_with_row = MagicMock()
-    result_with_row.first.return_value = _row(_CLIENT_ID)
-
-    # execute calls: bypass_rls | JOIN query | set_tenant_context | SET row_security on
+    # execute calls: vos_get_asset_client_id | set_tenant_context
     session = _make_session(
-        MagicMock(),
-        result_with_row,
-        MagicMock(),
+        _scalar_result(_CLIENT_ID),
         MagicMock(),
         get_return=asset_mock,
     )
@@ -161,11 +165,8 @@ async def test_get_asset_with_client_returns_asset_and_client_id() -> None:
 async def test_get_asset_with_client_returns_none_when_not_found() -> None:
     from vos_studio_mcp.services.database import get_asset_with_client
 
-    result_no_row = MagicMock()
-    result_no_row.first.return_value = None
-
-    # execute calls: bypass_rls | JOIN query (no row)
-    session = _make_session(MagicMock(), result_no_row)
+    # execute calls: vos_get_asset_client_id (returns None — asset not found)
+    session = _make_session(_scalar_result(None))
 
     asset, client_id = await get_asset_with_client(session, str(uuid.uuid4()))
 
@@ -184,14 +185,9 @@ async def test_set_tenant_context_from_sprint_returns_client_id() -> None:
 
     sprint_id = str(uuid.uuid4())
 
-    result_with_row = MagicMock()
-    result_with_row.first.return_value = _row(_CLIENT_ID)
-
-    # execute calls: bypass_rls | SELECT client_id | set_tenant_context | SET row_security on
+    # execute calls: vos_get_sprint_client_id | set_tenant_context
     session = _make_session(
-        MagicMock(),
-        result_with_row,
-        MagicMock(),
+        _scalar_result(_CLIENT_ID),
         MagicMock(),
     )
 
@@ -204,10 +200,8 @@ async def test_set_tenant_context_from_sprint_returns_client_id() -> None:
 async def test_set_tenant_context_from_sprint_raises_when_sprint_not_found() -> None:
     from vos_studio_mcp.services.database import set_tenant_context_from_sprint
 
-    result_no_row = MagicMock()
-    result_no_row.first.return_value = None
-
-    session = _make_session(MagicMock(), result_no_row)
+    # execute calls: vos_get_sprint_client_id (returns None — sprint not found)
+    session = _make_session(_scalar_result(None))
 
     with pytest.raises(LookupError, match="not found"):
         await set_tenant_context_from_sprint(session, str(uuid.uuid4()))
@@ -225,12 +219,9 @@ async def test_get_asset_notification_context_returns_tuple_when_found() -> None
     sprint_id = str(uuid.uuid4())
     webhook = "https://client.example.com/hook"
 
-    result_row = MagicMock()
-    result_row.first.return_value = (sprint_id, _CLIENT_ID, webhook)
-
     mock_ctx = MagicMock()
-    # execute calls: bypass_rls | SELECT query
-    session = _make_session(MagicMock(), result_row)
+    # execute calls: vos_get_asset_notification_context SELECT
+    session = _make_session(_row_result((sprint_id, _CLIENT_ID, webhook)))
     mock_ctx.__aenter__ = AsyncMock(return_value=session)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
 
@@ -248,11 +239,9 @@ async def test_get_asset_notification_context_returns_nones_when_not_found() -> 
     """Must return (None, None, None) when the asset does not exist."""
     asset_id = str(uuid.uuid4())
 
-    result_empty = MagicMock()
-    result_empty.first.return_value = None
-
     mock_ctx = MagicMock()
-    session = _make_session(MagicMock(), result_empty)
+    # execute calls: vos_get_asset_notification_context SELECT (no row)
+    session = _make_session(_row_result(None))
     mock_ctx.__aenter__ = AsyncMock(return_value=session)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
 
@@ -261,3 +250,33 @@ async def test_get_asset_notification_context_returns_nones_when_not_found() -> 
         result = await get_asset_notification_context(asset_id)
 
     assert result == (None, None, None)
+
+
+# ---------------------------------------------------------------------------
+# get_asset_by_job_id
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_asset_by_job_id_returns_ids_when_found() -> None:
+    from vos_studio_mcp.services.database import get_asset_by_job_id
+
+    asset_id = str(uuid.uuid4())
+    row = (asset_id, _CLIENT_ID)
+
+    session = _make_session(_row_result(row))
+    result_asset_id, result_client_id = await get_asset_by_job_id(session, "job-123")
+
+    assert result_asset_id == asset_id
+    assert result_client_id == _CLIENT_ID
+
+
+@pytest.mark.asyncio
+async def test_get_asset_by_job_id_returns_none_when_not_found() -> None:
+    from vos_studio_mcp.services.database import get_asset_by_job_id
+
+    session = _make_session(_row_result(None))
+    result_asset_id, result_client_id = await get_asset_by_job_id(session, "job-unknown")
+
+    assert result_asset_id is None
+    assert result_client_id is None
