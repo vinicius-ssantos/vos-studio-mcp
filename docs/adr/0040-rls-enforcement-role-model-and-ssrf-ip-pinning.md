@@ -1,8 +1,15 @@
 # ADR-0040 — RLS Enforcement Role Model and Outbound SSRF IP Pinning
 
-**Status:** Proposed  
+**Status:** Accepted  
 **Date:** 2026-06-04  
 **Related:** ADR-0023 (multitenancy / RLS), ADR-0032 (SSRF protection), ADR-0019 (auth)
+
+> **Implementation status:** Decision 2 (outbound SSRF IP pinning) is fully
+> implemented. Decision 1 step 1 — webhook ingress bootstrap via
+> `SECURITY DEFINER` functions — is implemented; the main connection no longer
+> uses `SET row_security = off`. Step 2 — eliminating the remaining
+> `bypass_rls()` usage in scheduled/system cross-tenant tasks
+> (`tasks/scheduled.py` and related services) — is tracked as follow-up work.
 
 ---
 
