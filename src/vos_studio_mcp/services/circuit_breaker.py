@@ -86,6 +86,10 @@ class CircuitBreaker:
         current_state = self.state
 
         if current_state == "open":
+            # The caller already built the coroutine (e.g. provider.call()); close
+            # it so it is not left un-awaited (avoids a RuntimeWarning and the
+            # resource it may hold).
+            coro.close()
             _record_metric(self.name, operation, success=False)
             raise VosError(
                 ErrorCode.PROVIDER_UNAVAILABLE,

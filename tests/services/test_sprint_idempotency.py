@@ -47,6 +47,7 @@ def _mock_existing_sprint() -> MagicMock:
 def _session_ctx() -> MagicMock:
     session = AsyncMock()
     session.get = AsyncMock(return_value=MagicMock(performance_memory={}))
+    session.add = MagicMock()  # SQLAlchemy Session.add is synchronous
 
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=session)

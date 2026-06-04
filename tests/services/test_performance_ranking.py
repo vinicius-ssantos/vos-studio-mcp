@@ -180,7 +180,7 @@ def test_recency_factor_naive_datetime() -> None:
     """Naive datetimes should be treated as UTC."""
     from vos_studio_mcp.services.performance_record_service import _recency_factor
 
-    naive_recent = datetime.utcnow() - timedelta(days=5)
+    naive_recent = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=5)
     assert _recency_factor(naive_recent) == pytest.approx(1.0)
 
 
