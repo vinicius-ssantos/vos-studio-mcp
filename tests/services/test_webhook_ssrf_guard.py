@@ -64,6 +64,23 @@ class TestIsPublicIp:
 # ---------------------------------------------------------------------------
 
 
+class TestValidateReturnsIp:
+    """validate_webhook_url must return the pinned IP for the caller to use."""
+
+    def test_returns_ip_for_hostname(self) -> None:
+        with patch(_MOCK_DNS, return_value=_PUBLIC_ADDR):
+            ip = validate_webhook_url("https://example.com/hook")
+        assert ip == "93.184.216.34"
+
+    def test_returns_ip_for_ipv4_literal(self) -> None:
+        ip = validate_webhook_url("https://93.184.216.34/hook")
+        assert ip == "93.184.216.34"
+
+    def test_returns_ip_for_ipv6_literal(self) -> None:
+        ip = validate_webhook_url("https://[2607:f8b0:4004:800::200e]/hook")
+        assert ip == "2607:f8b0:4004:800::200e"
+
+
 class TestSchemeValidation:
     def test_https_accepted(self) -> None:
         with patch(_MOCK_DNS, return_value=_PUBLIC_ADDR):
@@ -215,7 +232,8 @@ async def test_check_webhook_url_passes_for_public_url() -> None:
     from vos_studio_mcp.services.webhook_ssrf_guard import check_webhook_url
 
     with patch(_MOCK_DNS, return_value=_PUBLIC_ADDR):
-        await check_webhook_url("https://example.com/hook")  # must not raise
+        ip = await check_webhook_url("https://example.com/hook")
+    assert ip == "93.184.216.34"
 
 
 @pytest.mark.asyncio

@@ -26,13 +26,20 @@ Security notes:
 - The target URL is stored in the DB (client.webhook_url) — operators set it.
 - Delivery is best-effort: failures are logged but do not affect job outcome.
 - A 3-second timeout prevents slow receivers from blocking task workers.
+- follow_redirects is pinned to False: a redirect could forward the signed
+  payload to an unvalidated target, bypassing the SSRF guard.
+- The SSRF guard resolves DNS once and returns a pinned IP; delivery connects
+  to that IP with sni_hostname set to the original hostname for TLS
+  certificate verification — preventing DNS-rebinding attacks (ADR-0040).
 """
 
 import datetime
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -73,6 +80,28 @@ def _sign_payload(body: bytes, secret: str) -> str:
     """Return 'sha256=<hex>' for the HMAC-SHA256 of *body* using *secret*."""
     digest = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     return f"sha256={digest}"
+
+
+def _pin_url_to_ip(webhook_url: str, pinned_ip: str) -> tuple[str, str]:
+    """Return (ip_url, original_host) for use in pinned delivery.
+
+    Rewrites *webhook_url* so the host portion is replaced with *pinned_ip*,
+    preserving scheme, port, path, and query.  IPv6 addresses are bracketed.
+    The original hostname is returned separately for the Host header and SNI.
+    """
+    parsed = urlparse(webhook_url)
+    original_host = parsed.hostname or ""  # lowercase, no brackets
+
+    addr = ipaddress.ip_address(pinned_ip)
+    ip_in_netloc = f"[{pinned_ip}]" if addr.version == 6 else pinned_ip
+    port = parsed.port
+    netloc = f"{ip_in_netloc}:{port}" if port else ip_in_netloc
+
+    ip_url = urlunparse((
+        parsed.scheme, netloc, parsed.path,
+        parsed.params, parsed.query, parsed.fragment,
+    ))
+    return ip_url, original_host
 
 
 async def notify_job_completed(
@@ -147,11 +176,10 @@ async def _deliver(
     storage_url: str | None,
     provider_job_id: str | None,
 ) -> None:
-    # SSRF guard — second checkpoint (first is at URL registration time).
-    # Raises VosError(INVALID_INPUT) for private/loopback/metadata targets.
-    # The public helpers (notify_job_completed / notify_job_failed) swallow
-    # this like any other delivery error, so a bad stored URL is best-effort.
-    await check_webhook_url(webhook_url)
+    # SSRF guard — resolves DNS once and returns the validated IP to pin.
+    # Connecting to the IP (not re-resolving) closes the DNS-rebinding window
+    # (ADR-0040).  First check is at URL registration time; this is the second.
+    pinned_ip = await check_webhook_url(webhook_url)
 
     payload = _build_payload(
         event=event,
@@ -171,16 +199,26 @@ async def _deliver(
     if signature:
         headers["X-VOS-Signature"] = signature
 
-    # follow_redirects stays False: a redirect could send the signed payload to
-    # an unvalidated (potentially internal) target, bypassing the SSRF guard above.
-    async with httpx.AsyncClient(
-        timeout=_TIMEOUT_SECONDS, follow_redirects=False
-    ) as client:
-        response = await client.post(webhook_url, content=body, headers=headers)
+    # Rewrite the URL to use the pre-validated IP; restore the original
+    # hostname in the Host header and via sni_hostname so TLS certificate
+    # verification still targets the correct hostname.
+    ip_url, original_host = _pin_url_to_ip(webhook_url, pinned_ip)
+    headers["Host"] = original_host
 
-    # Raise so that _deliver_async (Celery path) can retry on non-2xx.
-    # The public helpers (notify_job_completed / notify_job_failed) that need
-    # best-effort / swallowing behaviour wrap this call in their own try/except.
+    request = httpx.Request(
+        "POST",
+        ip_url,
+        content=body,
+        headers=headers,
+        extensions={"sni_hostname": original_host.encode()},
+    )
+
+    async with httpx.AsyncClient(
+        timeout=_TIMEOUT_SECONDS,
+        follow_redirects=False,  # redirect would bypass the SSRF guard
+    ) as client:
+        response = await client.send(request)
+
     if not response.is_success:
         log.warning(
             "outbound_webhook.non_2xx",

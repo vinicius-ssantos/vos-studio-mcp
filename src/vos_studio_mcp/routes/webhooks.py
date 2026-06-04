@@ -5,11 +5,10 @@ import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, Request, Response
-from sqlalchemy import text
 
 from db.models import Asset
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
-from vos_studio_mcp.services.database import bypass_rls, get_session, set_tenant_context
+from vos_studio_mcp.services.database import get_asset_by_job_id, get_session, set_tenant_context
 from vos_studio_mcp.services.providers import get_adapter
 from vos_studio_mcp.tasks.upload_image import upload_image_to_storage
 from vos_studio_mcp.tasks.upload_video import upload_video_to_storage
@@ -63,31 +62,16 @@ async def _process_provider_webhook(
         log.warning(f"{provider}_webhook.unknown_status", extra={"status": raw_status})
         return {"received": True}
 
-    asset_id: Any = None
-    client_id: Any = None
-
     async with get_session() as session:
-        await bypass_rls(session)
+        # Bootstrap tenant context via SECURITY DEFINER function — no
+        # BYPASSRLS required on the connection role (ADR-0040 step 1).
+        asset_id, client_id = await get_asset_by_job_id(session, job_id)
 
-        result = await session.execute(
-            text(
-                "SELECT a.id, s.client_id "
-                "FROM assets a JOIN sprints s ON a.sprint_id = s.id "
-                "WHERE a.provider_job_id = :job_id "
-                "LIMIT 1"
-            ),
-            {"job_id": job_id},
-        )
-        row = result.first()
-
-        if row is None:
+        if asset_id is None:
             log.info(f"{provider}_webhook.job_not_found", extra={"job_id": job_id})
             return {"received": True}
 
-        asset_id, client_id = row
-
         await set_tenant_context(session, str(client_id))
-        await session.execute(text("SET LOCAL row_security = on"))
 
         asset = await session.get(Asset, asset_id)
         if asset is None:
