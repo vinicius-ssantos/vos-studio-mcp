@@ -128,7 +128,7 @@ async def test_service_skips_guard_when_url_is_none() -> None:
     from vos_studio_mcp.services.client_service import set_client_webhook
 
     with patch(f"{_CLIENT_SVC}.validate_webhook_url") as mock_guard, patch(
-        f"{_CLIENT_SVC}.bypass_rls", new=AsyncMock()
+        f"{_CLIENT_SVC}.set_tenant_context", new=AsyncMock()
     ), patch(f"{_CLIENT_SVC}.get_session", return_value=_make_session_ctx()):
         await set_client_webhook(_CLIENT_ID, SetClientWebhookInput(webhook_url=None))
 
@@ -143,7 +143,7 @@ async def test_service_raises_not_found_when_client_missing() -> None:
     ctx = _make_session_ctx(client_mock=None)
 
     with patch(f"{_CLIENT_SVC}.validate_webhook_url"), patch(
-        f"{_CLIENT_SVC}.bypass_rls", new=AsyncMock()
+        f"{_CLIENT_SVC}.set_tenant_context", new=AsyncMock()
     ), patch(f"{_CLIENT_SVC}.get_session", return_value=ctx), pytest.raises(VosError) as exc_info:
         await set_client_webhook(
             _CLIENT_ID, SetClientWebhookInput(webhook_url=_WEBHOOK_URL)
@@ -179,7 +179,7 @@ async def test_service_updates_webhook_url_in_db() -> None:
     ctx.__aexit__ = AsyncMock(return_value=False)
 
     with patch(f"{_CLIENT_SVC}.validate_webhook_url"), patch(
-        f"{_CLIENT_SVC}.bypass_rls", new=AsyncMock()
+        f"{_CLIENT_SVC}.set_tenant_context", new=AsyncMock()
     ), patch(f"{_CLIENT_SVC}.get_session", return_value=ctx):
         result = await set_client_webhook(
             _CLIENT_ID, SetClientWebhookInput(webhook_url=_WEBHOOK_URL)

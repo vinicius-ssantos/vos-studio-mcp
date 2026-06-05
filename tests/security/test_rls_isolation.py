@@ -103,10 +103,11 @@ class TestWebhookUrlOwnershipIsolation:
     """set_client_webhook must use the auth context client_id, never caller input.
 
     The tool layer extracts the client_id from get_current_client_id() and
-    passes it to the service.  The service uses bypass_rls + session.get(Client, cid)
-    where cid comes from the auth context — never from tool input.  Passing a
-    different client_id would require bypassing the tool layer entirely, which
-    is not possible via the MCP protocol.
+    passes it to the service.  The service sets the RLS tenant context to that
+    client_id and uses session.get(Client, cid) where cid comes from the auth
+    context — never from tool input.  Passing a different client_id would
+    require bypassing the tool layer entirely, which is not possible via the
+    MCP protocol; and RLS scopes the row to the tenant regardless.
 
     These tests verify the tool enforces auth context before delegating.
     """
@@ -210,7 +211,7 @@ class TestWebhookUrlOwnershipIsolation:
                 return_value=ctx,
             ),
             patch(
-                "vos_studio_mcp.services.client_service.bypass_rls",
+                "vos_studio_mcp.services.client_service.set_tenant_context",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -238,7 +239,7 @@ class TestWebhookUrlOwnershipIsolation:
 
         with (
             patch("vos_studio_mcp.services.client_service.get_session", return_value=ctx),
-            patch("vos_studio_mcp.services.client_service.bypass_rls", new_callable=AsyncMock),
+            patch("vos_studio_mcp.services.client_service.set_tenant_context", new_callable=AsyncMock),
             patch("vos_studio_mcp.services.client_service.validate_webhook_url"),
             pytest.raises(VosError),
         ):

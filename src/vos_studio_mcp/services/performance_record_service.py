@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from db.models import Asset, PerformanceRecord, Sprint
+from db.models import PerformanceRecord, Sprint
 from vos_studio_mcp.auth.guards import assert_owns_client
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.performance_record import (
@@ -20,7 +20,11 @@ from vos_studio_mcp.schemas.performance_record import (
     TopPerformer,
 )
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
-from vos_studio_mcp.services.database import bypass_rls, get_session, set_tenant_context
+from vos_studio_mcp.services.database import (
+    get_asset_with_client,
+    get_session,
+    set_tenant_context,
+)
 
 log = logging.getLogger(__name__)
 
@@ -117,20 +121,20 @@ async def create_performance_record(data: PerformanceRecordInput) -> Performance
     asset_uuid = uuid.UUID(data.asset_id)
 
     async with get_session() as session:
-        # Bypass RLS to look up the asset's client context
-        await bypass_rls(session)
-
-        asset: Asset | None = await session.get(Asset, asset_uuid)
-        if asset is None:
+        # Resolve the asset's owning client via the SECURITY DEFINER helper
+        # (no bypass_rls on the connection); this also sets the RLS tenant
+        # context, so subsequent reads are tenant-scoped (ADR-0040).
+        asset, client_id = await get_asset_with_client(session, str(asset_uuid))
+        if asset is None or client_id is None:
             raise VosError(ErrorCode.NOT_FOUND, f"Asset {data.asset_id} not found")
 
+        # Verify the authenticated caller owns the asset's client (ADR-0019, Issue #46).
+        assert_owns_client(client_id)
+
+        # Tenant context is set; the sprint read below is RLS-scoped.
         sprint: Sprint | None = await session.get(Sprint, asset.sprint_id)
         if sprint is None:
             raise VosError(ErrorCode.NOT_FOUND, f"Sprint not found for asset {data.asset_id}")
-
-        # Verify the authenticated caller owns the sprint's client (ADR-0019, Issue #46).
-        assert_owns_client(str(sprint.client_id))
-        await set_tenant_context(session, str(sprint.client_id))
 
         record = PerformanceRecord(
             id=uuid.uuid4(),

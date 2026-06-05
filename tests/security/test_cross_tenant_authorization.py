@@ -300,16 +300,12 @@ class TestResolvedClientIdTools:
         )
         from vos_studio_mcp.services.performance_record_service import create_performance_record
 
-        # Mock asset + sprint that belong to CLIENT_B
+        # Mock asset that belongs to CLIENT_B; the SECURITY DEFINER helper
+        # (get_asset_with_client) resolves the owning client_id as CLIENT_B.
         asset_mock = MagicMock()
         asset_mock.sprint_id = uuid.UUID(_SPRINT_B)
 
-        sprint_mock = MagicMock()
-        sprint_mock.client_id = uuid.UUID(_CLIENT_B)
-
         session = AsyncMock()
-        # session.get returns asset on first call, sprint on second
-        session.get = AsyncMock(side_effect=[asset_mock, sprint_mock])
         ctx = MagicMock()
         ctx.__aenter__ = AsyncMock(return_value=session)
         ctx.__aexit__ = AsyncMock(return_value=False)
@@ -321,15 +317,15 @@ class TestResolvedClientIdTools:
             performance_label="average",
         )
 
+        # assert_owns_client is NOT patched: with auth context = CLIENT_A and the
+        # asset owned by CLIENT_B, ownership verification must reject the call
+        # before any sprint read or write occurs.
         with patch(
             "vos_studio_mcp.services.performance_record_service.get_session",
             return_value=ctx,
         ), patch(
-            "vos_studio_mcp.services.performance_record_service.bypass_rls",
-            new=AsyncMock(),
-        ), patch(
-            "vos_studio_mcp.services.performance_record_service.set_tenant_context",
-            new=AsyncMock(),
+            "vos_studio_mcp.services.performance_record_service.get_asset_with_client",
+            new=AsyncMock(return_value=(asset_mock, _CLIENT_B)),
         ), patch(
             f"{_GUARDS}.get_current_client_id", return_value=_CLIENT_A
         ), pytest.raises(VosError) as exc_info:
