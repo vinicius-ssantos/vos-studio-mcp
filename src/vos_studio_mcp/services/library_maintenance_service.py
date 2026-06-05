@@ -19,7 +19,7 @@ from collections import defaultdict
 from sqlalchemy import select
 
 from db.models import PerformanceRecord, PromptTemplate
-from vos_studio_mcp.services.database import bypass_rls, get_session
+from vos_studio_mcp.services.database import get_privileged_session
 
 log = logging.getLogger(__name__)
 
@@ -45,9 +45,9 @@ async def refresh_library_tiers() -> dict[str, int]:
     Returns a dict with "updated" (total templates processed) and "promoted"
     (number whose performance_tier changed).
     """
-    async with get_session() as session:
-        await bypass_rls(session)
-
+    # Aggregates PerformanceRecord (RLS-scoped) across all tenants to compute
+    # global prompt-template tiers — privileged connection (ADR-0040 step 2).
+    async with get_privileged_session() as session:
         # ── 1. Load all non-deprecated templates ──────────────────────────
         templates_result = await session.scalars(
             select(PromptTemplate).where(PromptTemplate.performance_tier != "deprecated")

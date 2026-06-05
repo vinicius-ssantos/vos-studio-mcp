@@ -4,12 +4,15 @@
 **Date:** 2026-06-04  
 **Related:** ADR-0023 (multitenancy / RLS), ADR-0032 (SSRF protection), ADR-0019 (auth)
 
-> **Implementation status:** Decision 2 (outbound SSRF IP pinning) is fully
-> implemented. Decision 1 step 1 — webhook ingress bootstrap via
-> `SECURITY DEFINER` functions — is implemented; the main connection no longer
-> uses `SET row_security = off`. Step 2 — eliminating the remaining
-> `bypass_rls()` usage in scheduled/system cross-tenant tasks
-> (`tasks/scheduled.py` and related services) — is tracked as follow-up work.
+> **Implementation status:** Fully implemented.
+> - Decision 2 (outbound SSRF IP pinning) — done.
+> - Decision 1 step 1 — webhook ingress bootstrap via `SECURITY DEFINER`
+>   functions; the main connection no longer uses `SET row_security = off`.
+> - Decision 1 step 2 — `bypass_rls()` has been **removed entirely**. The
+>   remaining cross-tenant system tasks (scheduled rollups/cleanup, library-tier
+>   refresh, the global provider-budget ledger) now use a dedicated privileged
+>   connection (`get_privileged_session`, `DATABASE_PRIVILEGED_URL`); the audit
+>   writer uses a plain session since `audit_logs` has no RLS policy.
 
 ---
 

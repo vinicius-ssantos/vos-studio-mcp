@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import delete, select
 
 from db.models import Asset, BrandKit, PerformanceRecord
-from vos_studio_mcp.services.database import bypass_rls, get_session
+from vos_studio_mcp.services.database import get_privileged_session
 from vos_studio_mcp.services.library_maintenance_service import (
     refresh_library_tiers as do_refresh_library_tiers,
 )
@@ -63,8 +63,8 @@ async def _do_rollup() -> dict[str, int]:
     updated = 0
     skipped = 0
 
-    async with get_session() as session:
-        await bypass_rls(session)
+    # Cross-tenant system maintenance — privileged connection (ADR-0040 step 2).
+    async with get_privileged_session() as session:
 
         # Find distinct brand_kit_ids that have performance records
         result = await session.execute(
@@ -96,8 +96,8 @@ async def _do_rollup() -> dict[str, int]:
 
 
 async def _rollup_brand_kit(brand_kit_id: uuid.UUID) -> bool:
-    async with get_session() as session:
-        await bypass_rls(session)
+    # Cross-tenant system maintenance — privileged connection (ADR-0040 step 2).
+    async with get_privileged_session() as session:
 
         # Top performers ordered by CTR desc
         top_result = await session.execute(
@@ -196,8 +196,8 @@ def cleanup_stale_jobs(self: Any) -> dict[str, int]:
 async def _do_cleanup() -> dict[str, int]:
     cutoff = datetime.now(UTC) - timedelta(days=_STALE_DAYS)
 
-    async with get_session() as session:
-        await bypass_rls(session)
+    # Cross-tenant system maintenance — privileged connection (ADR-0040 step 2).
+    async with get_privileged_session() as session:
 
         result = await session.execute(
             delete(Asset)

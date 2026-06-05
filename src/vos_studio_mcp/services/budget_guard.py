@@ -16,7 +16,7 @@ from db.models import ProviderUsageEvent
 from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.schemas.budget import ProviderDailyStats
-from vos_studio_mcp.services.database import bypass_rls, get_session
+from vos_studio_mcp.services.database import get_privileged_session
 
 log = logging.getLogger(__name__)
 
@@ -49,9 +49,9 @@ async def check_provider_budget(
     daily_limit = settings.provider_daily_limit_usd
     today = _today_start()
 
-    async with get_session() as session:
-        await bypass_rls(session)
-
+    # Cross-tenant by design: the daily cap is global per provider (ADR-0040
+    # step 2 — privileged connection, RLS bypassed at the role level).
+    async with get_privileged_session() as session:
         # Sum all estimated spend for this provider today
         today_spend_result = await session.execute(
             select(func.coalesce(func.sum(ProviderUsageEvent.estimated_usd), 0.0)).where(
@@ -105,8 +105,7 @@ async def record_actual_cost(event_id: str, actual_usd: float) -> None:
     never blocks the primary workflow.
     """
     try:
-        async with get_session() as session:
-            await bypass_rls(session)
+        async with get_privileged_session() as session:
             event: ProviderUsageEvent | None = await session.get(
                 ProviderUsageEvent, uuid.UUID(event_id)
             )
@@ -131,9 +130,8 @@ async def get_provider_daily_summary(
     """
     today = _today_start()
 
-    async with get_session() as session:
-        await bypass_rls(session)
-
+    # Global per-provider aggregation across all tenants (ADR-0040 step 2).
+    async with get_privileged_session() as session:
         query = (
             select(
                 ProviderUsageEvent.provider,

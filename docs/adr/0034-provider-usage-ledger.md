@@ -45,8 +45,9 @@ A new immutable-ish table records every generation request with:
 | `event_type`    | `generation_requested` or `generation_completed`             |
 | `recorded_at`   | UTC server timestamp (server_default)                        |
 
-RLS is enabled: clients can only read their own events; the service role uses
-`bypass_rls` for cross-tenant quota aggregation.
+RLS is enabled: clients can only read their own events; cross-tenant quota
+aggregation runs over the dedicated privileged connection
+(`get_privileged_session`, ADR-0040 step 2).
 
 ### 2. `budget_guard.check_provider_budget()`
 

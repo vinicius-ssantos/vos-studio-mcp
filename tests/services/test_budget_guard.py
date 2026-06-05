@@ -13,8 +13,7 @@ from vos_studio_mcp.services.budget_guard import (
     record_actual_cost,
 )
 
-_GET_SESSION = "vos_studio_mcp.services.budget_guard.get_session"
-_BYPASS_RLS = "vos_studio_mcp.services.budget_guard.bypass_rls"
+_GET_SESSION = "vos_studio_mcp.services.budget_guard.get_privileged_session"
 _GET_SETTINGS = "vos_studio_mcp.services.budget_guard.get_settings"
 
 _PROVIDER = "higgsfield"
@@ -59,7 +58,6 @@ async def test_no_limit_records_event_and_returns_id() -> None:
     with (
         patch(_GET_SETTINGS, return_value=_mock_settings(daily_limit=0.0)),
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
     ):
         event_id = await check_provider_budget(
             _PROVIDER, _CLIENT_ID, _SPRINT_ID, _ESTIMATED_USD
@@ -78,7 +76,6 @@ async def test_within_limit_records_event() -> None:
     with (
         patch(_GET_SETTINGS, return_value=_mock_settings(daily_limit=1.0)),
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
     ):
         event_id = await check_provider_budget(
             _PROVIDER, _CLIENT_ID, _SPRINT_ID, _ESTIMATED_USD
@@ -95,7 +92,6 @@ async def test_exactly_at_limit_succeeds() -> None:
     with (
         patch(_GET_SETTINGS, return_value=_mock_settings(daily_limit=1.0)),
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
     ):
         # 0.90 + 0.10 = 1.00, which is NOT > 1.0 so should succeed
         event_id = await check_provider_budget(
@@ -112,7 +108,6 @@ async def test_quota_exceeded_raises() -> None:
     with (
         patch(_GET_SETTINGS, return_value=_mock_settings(daily_limit=1.0)),
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
         pytest.raises(VosError) as exc_info,
     ):
         await check_provider_budget(_PROVIDER, _CLIENT_ID, _SPRINT_ID, _ESTIMATED_USD)
@@ -130,7 +125,6 @@ async def test_quota_exceeded_does_not_record_event() -> None:
     with (
         patch(_GET_SETTINGS, return_value=_mock_settings(daily_limit=1.0)),
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
         pytest.raises(VosError),
     ):
         await check_provider_budget(_PROVIDER, _CLIENT_ID, _SPRINT_ID, _ESTIMATED_USD)
@@ -147,7 +141,6 @@ async def test_large_budget_exceeded_message_contains_values() -> None:
     with (
         patch(_GET_SETTINGS, return_value=_mock_settings(daily_limit=10.0)),
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
         pytest.raises(VosError) as exc_info,
     ):
         await check_provider_budget(_PROVIDER, _CLIENT_ID, _SPRINT_ID, estimated_usd=1.00)
@@ -177,7 +170,6 @@ async def test_record_actual_cost_updates_event() -> None:
 
     with (
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
     ):
         await record_actual_cost(event_id, actual_usd=0.08)
 
@@ -206,7 +198,6 @@ async def test_record_actual_cost_logs_when_event_not_found() -> None:
 
     with (
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
     ):
         # Should not raise
         await record_actual_cost(str(uuid.uuid4()), 0.08)
@@ -243,7 +234,6 @@ async def test_get_provider_daily_summary_returns_stats() -> None:
 
     with (
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
     ):
         stats = await get_provider_daily_summary()
 
@@ -270,7 +260,6 @@ async def test_get_provider_daily_summary_empty() -> None:
 
     with (
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
     ):
         stats = await get_provider_daily_summary()
 
@@ -291,7 +280,6 @@ async def test_get_provider_daily_summary_provider_filter_used() -> None:
 
     with (
         patch(_GET_SESSION, return_value=ctx),
-        patch(_BYPASS_RLS, new_callable=AsyncMock),
     ):
         stats = await get_provider_daily_summary(provider="higgsfield")
 

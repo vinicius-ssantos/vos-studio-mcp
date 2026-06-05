@@ -24,6 +24,13 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://postgres:password@localhost:54322/postgres",
         alias="DATABASE_URL",
     )
+    # Privileged connection for cross-tenant system tasks (ADR-0040 step 2).
+    # MUST use a BYPASSRLS role (e.g. Supabase service_role) so scheduled
+    # rollups/cleanup, the global provider-budget ledger, and the audit writer
+    # can operate across all tenants. The main DATABASE_URL role stays
+    # NOSUPERUSER/NOBYPASSRLS. Left empty by default: falls back to
+    # DATABASE_URL so existing single-role dev/test setups keep working.
+    database_privileged_url: str = Field(default="", alias="DATABASE_PRIVILEGED_URL")
 
     # Supabase (ADR-0007)
     supabase_url: str = Field(default="", alias="SUPABASE_URL")

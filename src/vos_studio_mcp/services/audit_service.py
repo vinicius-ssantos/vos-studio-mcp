@@ -10,7 +10,7 @@ import uuid
 
 from db.models import AuditLog
 from vos_studio_mcp.auth.context import get_current_client_id
-from vos_studio_mcp.services.database import bypass_rls, get_session
+from vos_studio_mcp.services.database import get_session
 
 log = logging.getLogger(__name__)
 
@@ -78,8 +78,9 @@ async def emit_audit_event(
     """
     resolved_actor = actor or get_current_client_id() or "system"
     try:
+        # audit_logs has no RLS policy (system-wide, no client_id), so a plain
+        # session suffices — no privileged connection or bypass needed.
         async with get_session() as session:
-            await bypass_rls(session)
             event = AuditLog(
                 id=uuid.uuid4(),
                 actor=resolved_actor,
