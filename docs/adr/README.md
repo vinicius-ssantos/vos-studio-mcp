@@ -46,6 +46,6 @@ ADRs explain important decisions, the context behind them, alternatives consider
 | [0036](0036-outbound-webhook-retry-policy.md) | Outbound webhook retry policy | Accepted |
 | [0037](0037-asset-stage-and-lineage-model.md) | Asset stage and lineage model | Accepted |
 | [0038](0038-brand-kit-asset-lock-v2.md) | BrandKit Asset Lock (campaign visual system v2) | Accepted |
-| [0039](0039-vos-native-domain-evolution-roadmap.md) | Evolve the architecture toward a VOS-native creative domain | Proposed |
+| [0039](0039-vos-native-domain-evolution-roadmap.md) | Evolve the architecture toward a VOS-native creative domain | Accepted |
 | [0040](0040-rls-enforcement-role-model-and-ssrf-ip-pinning.md) | RLS enforcement role model and outbound SSRF IP pinning | Accepted |
 | [0044](0044-vos-as-mcp-client-for-provider-mcp-servers.md) | VOS as MCP client for provider MCP servers | Accepted |
