@@ -137,6 +137,64 @@ async def test_check_marks_failed_on_job_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_check_releases_reserved_budget_on_job_failure() -> None:
+    """A failed generation with a linked usage event must release the reserved
+    budget (ADR-0039 #5) before committing the failed-status transition."""
+    asset = _mock_asset(
+        status="pending",
+        provider_usage_event_id="11111111-0000-0000-0000-000000000001",
+    )
+    adapter = MagicMock()
+    adapter.check_job_status = AsyncMock(
+        return_value=JobStatus(job_id="gen-123", status="failed", error="content violation")
+    )
+
+    with (
+        patch(_GET_SESSION, return_value=_session_ctx(asset)),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(_GET_ADAPTER, return_value=adapter),
+        patch(_GET_NOTIFY_CTX, new_callable=AsyncMock, return_value=(None, None, None)),
+        patch(
+            f"{_TASK_MODULE}.release_reserved_budget",
+            new_callable=AsyncMock,
+            return_value=0.25,
+        ) as mock_release,
+    ):
+        from vos_studio_mcp.tasks.poll_video import _check_and_update
+        result = await _check_and_update("asset-001")
+
+    assert result == "done"
+    assert asset.generation_status == "failed"
+    mock_release.assert_awaited_once()
+    # released within the same session as the failed transition
+    assert mock_release.call_args[0][1] is asset
+
+
+@pytest.mark.asyncio
+async def test_mark_status_failed_releases_reserved_budget() -> None:
+    """The timeout path (_mark_status 'failed') must also release the budget."""
+    asset = _mock_asset(
+        status="processing",
+        provider_usage_event_id="11111111-0000-0000-0000-000000000001",
+    )
+
+    with (
+        patch(_GET_SESSION, return_value=_session_ctx(asset)),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(
+            f"{_TASK_MODULE}.release_reserved_budget",
+            new_callable=AsyncMock,
+            return_value=0.25,
+        ) as mock_release,
+    ):
+        from vos_studio_mcp.tasks.poll_video import _mark_status
+        await _mark_status("asset-001", "failed")
+
+    assert asset.generation_status == "failed"
+    mock_release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_check_enqueues_webhook_on_job_failure_with_webhook_url() -> None:
     """When the job fails AND a webhook_url is configured, enqueue_webhook_failed
     must be called with the correct event and IDs."""

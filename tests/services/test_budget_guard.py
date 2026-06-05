@@ -11,6 +11,7 @@ from vos_studio_mcp.services.budget_guard import (
     check_provider_budget,
     get_provider_daily_summary,
     record_actual_cost,
+    release_reserved_budget,
 )
 
 _GET_SESSION = "vos_studio_mcp.services.budget_guard.get_privileged_session"
@@ -285,3 +286,82 @@ async def test_get_provider_daily_summary_provider_filter_used() -> None:
 
     assert len(stats) == 1
     assert stats[0].provider == "higgsfield"
+
+
+# ---------------------------------------------------------------------------
+# release_reserved_budget — failed/timed-out generation refunds (ADR-0039 #5)
+# ---------------------------------------------------------------------------
+
+
+def _release_session(event: MagicMock | None, sprint: MagicMock | None) -> AsyncMock:
+    """Session whose .get() returns the event then the sprint by call order."""
+    session = AsyncMock()
+    session.get = AsyncMock(side_effect=[event, sprint])
+    return session
+
+
+@pytest.mark.asyncio
+async def test_release_returns_zero_when_no_usage_event_link() -> None:
+    asset = MagicMock()
+    asset.provider_usage_event_id = None
+
+    session = AsyncMock()
+    session.get = AsyncMock()
+
+    released = await release_reserved_budget(session, asset)
+
+    assert released == 0.0
+    session.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_release_refunds_estimate_to_sprint() -> None:
+    event = MagicMock(estimated_usd=0.25, actual_usd=None)
+    sprint = MagicMock(spent_usd=1.0)
+
+    asset = MagicMock()
+    asset.provider_usage_event_id = uuid.uuid4()
+    asset.sprint_id = uuid.uuid4()
+
+    session = _release_session(event, sprint)
+    released = await release_reserved_budget(session, asset)
+
+    assert released == 0.25
+    assert sprint.spent_usd == pytest.approx(0.75)
+    # Marked reconciled so a second call is a no-op.
+    assert event.actual_usd == 0.0
+
+
+@pytest.mark.asyncio
+async def test_release_is_idempotent_when_already_reconciled() -> None:
+    """If actual_usd is already set, the event was reconciled — do nothing."""
+    event = MagicMock(estimated_usd=0.25, actual_usd=0.0)
+
+    asset = MagicMock()
+    asset.provider_usage_event_id = uuid.uuid4()
+    asset.sprint_id = uuid.uuid4()
+
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=event)
+
+    released = await release_reserved_budget(session, asset)
+
+    assert released == 0.0
+    # sprint was never fetched (no second .get) — guarded before any refund
+    session.get.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_release_never_drives_spend_negative() -> None:
+    event = MagicMock(estimated_usd=5.0, actual_usd=None)
+    sprint = MagicMock(spent_usd=2.0)  # reserved more than current spend
+
+    asset = MagicMock()
+    asset.provider_usage_event_id = uuid.uuid4()
+    asset.sprint_id = uuid.uuid4()
+
+    session = _release_session(event, sprint)
+    released = await release_reserved_budget(session, asset)
+
+    assert released == 5.0
+    assert sprint.spent_usd == 0.0  # floored at zero, not negative

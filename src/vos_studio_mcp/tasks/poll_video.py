@@ -7,7 +7,7 @@ from typing import Any
 from celery.exceptions import MaxRetriesExceededError
 
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
-from vos_studio_mcp.services.budget_guard import record_actual_cost
+from vos_studio_mcp.services.budget_guard import record_actual_cost, release_reserved_budget
 from vos_studio_mcp.services.database import (
     get_asset_notification_context,
     get_asset_with_client,
@@ -99,7 +99,16 @@ async def _check_and_update(asset_id: str) -> str:
         else:
             provider_job_id = asset.provider_job_id
             asset.generation_status = "failed"
+            # Failed generation produced no deliverable — return the reserved
+            # estimate to the sprint budget (ADR-0039 #5). Atomic with the
+            # status transition; idempotent.
+            released = await release_reserved_budget(session, asset)
             await session.commit()
+            if released:
+                log.info(
+                    "generation.budget_released",
+                    extra={"asset_id": asset_id, "released_usd": released},
+                )
             await emit_audit_event(
                 action=AuditAction.POLL_JOB_FAILED,
                 entity_type="asset",
@@ -138,4 +147,8 @@ async def _mark_status(asset_id: str, status: str) -> None:
         asset, _ = await get_asset_with_client(session, asset_id)
         if asset is not None:
             asset.generation_status = status
+            # On timeout-driven failure, release the reserved estimate too
+            # (ADR-0039 #5). Idempotent via release_reserved_budget.
+            if status == "failed":
+                await release_reserved_budget(session, asset)
             await session.commit()

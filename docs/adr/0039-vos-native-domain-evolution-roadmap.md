@@ -1,7 +1,27 @@
 # ADR-0039 — Evolve the architecture toward a VOS-native creative domain
 
-Status: Proposed  
-Date: 2026-05-26
+Status: Accepted  
+Date: 2026-05-26  
+Last reviewed: 2026-06-05
+
+> **Implementation status (2026-06-05).** This roadmap is now largely realized.
+> The macro-architecture is unchanged; the domain refinement has been delivered
+> incrementally as planned. Status per problem in the "Problem statement":
+>
+> | # | Problem | Status |
+> |---|---------|--------|
+> | 1 | Creative domain under-modeled (stage/kind/lineage) | **Done** — migration `0013_add_asset_stage_kind_lineage` + ADR-0037; `Asset` is stage/kind/lineage-aware |
+> | 2 | Implicit state machines | **Done** — `generation_status` and `storage_status` are separate (ADR-0031); status/next-action are storage-aware (`_resolve_summary`/`_resolve_next_action`) |
+> | 3 | Concentrated generation orchestration | **Partial** — `request_api_video()` is still one method but is now concurrency-safe; further decomposition is optional/low-priority |
+> | 4 | BrandKit too loose | **Done** — migration `0014_add_brand_kit_asset_lock` + ADR-0038 (Accepted) |
+> | 5 | Financial correctness split across layers | **In progress** — request-time reservation, `provider_usage_event` linkage and `record_actual_cost` exist; failed/timed-out generations now **release** the reserved estimate from `sprint.spent_usd` (`release_reserved_budget`). Reconciling *actual* provider-billed cost into sprint spend remains future work (depends on adapters reporting actual cost) |
+> | 6 | Concurrency-unsafe budget enforcement | **Done** — `request_api_video()` re-validates under `SELECT … FOR UPDATE` (Fix #67) |
+>
+> **Phase status:** Phase 1 (domain correction) — complete. Phase 2 (workflow
+> correction) — mostly complete; remaining work is actual-cost reconciliation in
+> #5 and the optional decomposition in #3. Phase 3 (protocol-native refinement)
+> — partially delivered (MCP resources/prompts, provider-native MCP via
+> ADR-0044); ranking/learning and production auth hardening are ongoing.
 
 ## Context
 
