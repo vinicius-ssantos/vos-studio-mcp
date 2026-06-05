@@ -1,8 +1,8 @@
 """Unit tests for services/database.py helper functions.
 
-get_session, get_asset_with_client, set_tenant_context_from_sprint,
-bypass_rls, get_asset_by_job_id, and set_tenant_context are tested with
-mocked AsyncSession objects so no real database is required.
+get_session, get_privileged_session, get_asset_with_client,
+set_tenant_context_from_sprint, get_asset_by_job_id, and set_tenant_context
+are tested with mocked AsyncSession objects so no real database is required.
 """
 
 import uuid
@@ -105,19 +105,27 @@ async def test_get_session_reraises_non_rls_internal_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# bypass_rls
+# get_privileged_session
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_bypass_rls_executes_set_row_security_off() -> None:
-    from vos_studio_mcp.services.database import bypass_rls
+async def test_get_privileged_session_yields_from_privileged_factory() -> None:
+    """get_privileged_session must yield from the privileged session factory
+    (ADR-0040 step 2) — the BYPASSRLS connection used by cross-tenant tasks."""
+    from vos_studio_mcp.services.database import get_privileged_session
 
-    session = _make_session(MagicMock())
-    await bypass_rls(session)
-    session.execute.assert_awaited_once()
-    sql = str(session.execute.call_args[0][0])
-    assert "row_security" in sql
+    mock_session = AsyncMock()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "vos_studio_mcp.services.database._privileged_session_factory",
+        return_value=mock_ctx,
+    ):
+        async with get_privileged_session() as session:
+            assert session is mock_session
 
 
 # ---------------------------------------------------------------------------

@@ -7,25 +7,51 @@ from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.exc import InternalError as SAInternalError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
 from db.models import Asset
 from vos_studio_mcp.config.env import get_settings
 from vos_studio_mcp.errors import ErrorCode, VosError
 
-_engine = create_async_engine(
-    get_settings().database_url,
-    echo=False,
-    pool_pre_ping=True,
-    poolclass=NullPool,
-    connect_args={
-        "prepared_statement_cache_size": 0,
-        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
-    },
-)
+
+def _make_engine(url: str) -> AsyncEngine:
+    return create_async_engine(
+        url,
+        echo=False,
+        pool_pre_ping=True,
+        poolclass=NullPool,
+        connect_args={
+            "prepared_statement_cache_size": 0,
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+        },
+    )
+
+
+_settings = get_settings()
+
+# Main connection — should be a NOSUPERUSER/NOBYPASSRLS role in production so
+# RLS is a real enforcement boundary (ADR-0040).
+_engine = _make_engine(_settings.database_url)
 _session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
     _engine, expire_on_commit=False
+)
+
+# Privileged connection for cross-tenant system tasks (ADR-0040 step 2).
+# Falls back to the main connection when DATABASE_PRIVILEGED_URL is empty so
+# single-role dev/test setups keep working; in production it points at a
+# BYPASSRLS role (e.g. Supabase service_role).
+_privileged_url = _settings.database_privileged_url or _settings.database_url
+_privileged_engine: AsyncEngine = (
+    _engine if _privileged_url == _settings.database_url else _make_engine(_privileged_url)
+)
+_privileged_session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
+    _privileged_engine, expire_on_commit=False
 )
 
 
@@ -101,22 +127,24 @@ async def set_tenant_context_from_sprint(session: AsyncSession, sprint_id: str) 
     return client_id
 
 
-async def bypass_rls(session: AsyncSession) -> None:
-    """Disable row-level security for the current transaction.
+@asynccontextmanager
+async def get_privileged_session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield a session bound to the privileged (BYPASSRLS) connection.
 
-    Requires the DB user to have BYPASSRLS privilege (Supabase service role
-    in production; postgres superuser in development).
+    For cross-tenant system tasks that operate across all tenants by design —
+    scheduled performance rollups, stale-job cleanup, library-tier refresh,
+    the global provider-budget ledger, and the audit writer (ADR-0040 step 2).
 
-    Used by scheduled/system-wide tasks (quota reset, library tier refresh,
-    performance rollup, stale job cleanup) that operate across all tenants
-    by design.  NOT used for the provider webhook ingress bootstrap path —
-    that uses SECURITY DEFINER functions instead (ADR-0040 step 1).
+    The privileged role bypasses RLS at the role level, so no
+    ``SET row_security = off`` is needed on the main NOBYPASSRLS connection.
+    When ``DATABASE_PRIVILEGED_URL`` is unset this falls back to the main
+    connection, preserving single-role dev/test behaviour.
 
-    Step 2 of ADR-0040 will eliminate this function by providing
-    SECURITY DEFINER functions or a separate privileged connection for each
-    remaining cross-tenant operation.
+    This replaces the former ``bypass_rls()`` helper: the main connection no
+    longer needs (or should have) BYPASSRLS.
     """
-    await session.execute(text("SET LOCAL row_security = off"))
+    async with _privileged_session_factory() as session:
+        yield session
 
 
 async def get_asset_by_job_id(

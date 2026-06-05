@@ -6,8 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-_SESSION_PATCH = "vos_studio_mcp.tasks.scheduled.get_session"
-_BYPASS_PATCH = "vos_studio_mcp.tasks.scheduled.bypass_rls"
+_SESSION_PATCH = "vos_studio_mcp.tasks.scheduled.get_privileged_session"
 
 
 def _mock_session_ctx(
@@ -67,7 +66,7 @@ class TestRollupPerformanceMemory:
 
         session_ctx = _mock_session_ctx(brand_kit_ids=[])
 
-        with patch(_SESSION_PATCH, return_value=session_ctx), patch(_BYPASS_PATCH):
+        with patch(_SESSION_PATCH, return_value=session_ctx):
             result = await _do_rollup()
 
         assert result == {"updated": 0, "skipped": 0}
@@ -120,7 +119,6 @@ class TestRollupPerformanceMemory:
 
         with (
             patch(_SESSION_PATCH, side_effect=[ctx1, ctx2]),
-            patch(_BYPASS_PATCH),
         ):
             result = await _do_rollup()
 
@@ -166,7 +164,6 @@ class TestRollupPerformanceMemory:
 
         with (
             patch(_SESSION_PATCH, side_effect=[ctx1, ctx2]),
-            patch(_BYPASS_PATCH),
         ):
             result = await _do_rollup()
 
@@ -195,7 +192,7 @@ class TestCleanupStaleJobs:
         ctx.__aenter__ = AsyncMock(return_value=session)
         ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(_SESSION_PATCH, return_value=ctx), patch(_BYPASS_PATCH):
+        with patch(_SESSION_PATCH, return_value=ctx):
             result = await _do_cleanup()
 
         assert result == {"deleted": 3}
@@ -216,7 +213,7 @@ class TestCleanupStaleJobs:
         ctx.__aenter__ = AsyncMock(return_value=session)
         ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(_SESSION_PATCH, return_value=ctx), patch(_BYPASS_PATCH):
+        with patch(_SESSION_PATCH, return_value=ctx):
             result = await _do_cleanup()
 
         assert result == {"deleted": 0}
@@ -353,7 +350,6 @@ async def test_do_rollup_skips_brand_kit_on_exception() -> None:
 
     with (
         patch(_SESSION_PATCH, return_value=ctx),
-        patch(_BYPASS_PATCH),
         patch(
             "vos_studio_mcp.tasks.scheduled._rollup_brand_kit",
             side_effect=RuntimeError("transient db error"),

@@ -35,7 +35,6 @@ async def test_emit_writes_audit_log_to_db() -> None:
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
         patch(f"{_MODULE}.get_current_client_id", return_value="client-001"),
     ):
         await emit_audit_event(
@@ -63,7 +62,6 @@ async def test_emit_uses_provided_actor_over_context() -> None:
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
         patch(f"{_MODULE}.get_current_client_id", return_value="ctx-client"),
     ):
         await emit_audit_event(
@@ -91,7 +89,6 @@ async def test_emit_falls_back_to_system_when_no_client_id() -> None:
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
         patch(f"{_MODULE}.get_current_client_id", return_value=None),
     ):
         await emit_audit_event(
@@ -118,7 +115,6 @@ async def test_emit_stores_all_fields() -> None:
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
         patch(f"{_MODULE}.get_current_client_id", return_value=None),
     ):
         await emit_audit_event(
@@ -183,7 +179,6 @@ async def test_emit_swallows_commit_error() -> None:
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
         patch(f"{_MODULE}.get_current_client_id", return_value=None),
     ):
         # Must not raise

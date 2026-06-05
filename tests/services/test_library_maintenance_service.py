@@ -6,8 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 _SERVICE = "vos_studio_mcp.services.library_maintenance_service"
-_GET_SESSION = f"{_SERVICE}.get_session"
-_BYPASS_RLS = f"{_SERVICE}.bypass_rls"
+_GET_SESSION = f"{_SERVICE}.get_privileged_session"
 
 
 def _mock_template(
@@ -58,7 +57,7 @@ async def test_refresh_promotes_to_tested() -> None:
     records = [_mock_perf_record(sprint_id=sprint_id, ctr=0.04) for _ in range(5)]
 
     ctx = _session_ctx([template], records)
-    with patch(_GET_SESSION, return_value=ctx), patch(_BYPASS_RLS, new_callable=AsyncMock):
+    with patch(_GET_SESSION, return_value=ctx):
         result = await refresh_library_tiers()
 
     assert template.performance_tier == "tested"
@@ -76,7 +75,7 @@ async def test_refresh_promotes_to_top_performer() -> None:
     records = [_mock_perf_record(sprint_id=sprint_id, ctr=0.06) for _ in range(10)]
 
     ctx = _session_ctx([template], records)
-    with patch(_GET_SESSION, return_value=ctx), patch(_BYPASS_RLS, new_callable=AsyncMock):
+    with patch(_GET_SESSION, return_value=ctx):
         result = await refresh_library_tiers()
 
     assert template.performance_tier == "top_performer"
@@ -93,7 +92,7 @@ async def test_refresh_stays_experimental_with_low_ctr() -> None:
     records = [_mock_perf_record(sprint_id=sprint_id, ctr=0.01) for _ in range(5)]
 
     ctx = _session_ctx([template], records)
-    with patch(_GET_SESSION, return_value=ctx), patch(_BYPASS_RLS, new_callable=AsyncMock):
+    with patch(_GET_SESSION, return_value=ctx):
         result = await refresh_library_tiers()
 
     assert template.performance_tier == "experimental"
@@ -113,7 +112,7 @@ async def test_refresh_demotes_when_data_drops() -> None:
     records = [_mock_perf_record(sprint_id=sprint_id, ctr=0.04) for _ in range(2)]
 
     ctx = _session_ctx([template], records)
-    with patch(_GET_SESSION, return_value=ctx), patch(_BYPASS_RLS, new_callable=AsyncMock):
+    with patch(_GET_SESSION, return_value=ctx):
         result = await refresh_library_tiers()
 
     assert template.performance_tier == "experimental"
@@ -131,7 +130,7 @@ async def test_refresh_no_templates_returns_zero() -> None:
     ctx.__aenter__ = AsyncMock(return_value=session)
     ctx.__aexit__ = AsyncMock(return_value=False)
 
-    with patch(_GET_SESSION, return_value=ctx), patch(_BYPASS_RLS, new_callable=AsyncMock):
+    with patch(_GET_SESSION, return_value=ctx):
         result = await refresh_library_tiers()
 
     assert result == {"updated": 0, "promoted": 0}
@@ -150,7 +149,7 @@ async def test_refresh_updates_avg_ctr_and_roas() -> None:
     ]
 
     ctx = _session_ctx([template], records)
-    with patch(_GET_SESSION, return_value=ctx), patch(_BYPASS_RLS, new_callable=AsyncMock):
+    with patch(_GET_SESSION, return_value=ctx):
         await refresh_library_tiers()
 
     assert template.avg_ctr == pytest.approx(0.05)
