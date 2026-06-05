@@ -63,27 +63,21 @@ async def get_asset_with_client(
 ) -> tuple[Asset | None, str | None]:
     """Look up an Asset by ID and return (asset, client_id).
 
-    Bypasses RLS for the initial JOIN to retrieve client_id, then
-    re-enables RLS with the correct tenant context before fetching
-    the full ORM object. Returns (None, None) if the asset is not found.
+    Calls the SECURITY DEFINER function vos_get_asset_client_id to retrieve
+    the owning client_id without requiring BYPASSRLS on the connection role
+    (ADR-0040), then sets the RLS tenant context before fetching the full
+    ORM object so subsequent session operations are properly isolated.
     """
-    await bypass_rls(session)
     result = await session.execute(
-        text(
-            "SELECT s.client_id FROM assets a "
-            "JOIN sprints s ON a.sprint_id = s.id "
-            "WHERE a.id = :asset_id LIMIT 1"
-        ),
+        text("SELECT vos_get_asset_client_id(:asset_id)"),
         {"asset_id": asset_id},
     )
-    row = result.first()
+    row = result.scalar_one_or_none()
     if row is None:
         return None, None
 
-    client_id = str(row[0])
+    client_id = str(row)
     await set_tenant_context(session, client_id)
-    await session.execute(text("SET LOCAL row_security = on"))
-
     asset = await session.get(Asset, uuid.UUID(asset_id))
     return asset, client_id
 
@@ -91,21 +85,57 @@ async def get_asset_with_client(
 async def set_tenant_context_from_sprint(session: AsyncSession, sprint_id: str) -> str:
     """Look up a sprint's client_id and set the RLS tenant context.
 
-    Bypasses RLS to retrieve the client_id, then re-enables RLS with that context.
+    Calls the SECURITY DEFINER function vos_get_sprint_client_id to retrieve
+    the client_id without requiring BYPASSRLS on the connection role (ADR-0040).
     Returns the client_id string. Raises LookupError if the sprint is not found.
     """
-    await bypass_rls(session)
     result = await session.execute(
-        text("SELECT client_id FROM sprints WHERE id = :sprint_id LIMIT 1"),
+        text("SELECT vos_get_sprint_client_id(:sprint_id)"),
         {"sprint_id": sprint_id},
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise LookupError(f"Sprint {sprint_id} not found")
+    client_id = str(row)
+    await set_tenant_context(session, client_id)
+    return client_id
+
+
+async def bypass_rls(session: AsyncSession) -> None:
+    """Disable row-level security for the current transaction.
+
+    Requires the DB user to have BYPASSRLS privilege (Supabase service role
+    in production; postgres superuser in development).
+
+    Used by scheduled/system-wide tasks (quota reset, library tier refresh,
+    performance rollup, stale job cleanup) that operate across all tenants
+    by design.  NOT used for the provider webhook ingress bootstrap path —
+    that uses SECURITY DEFINER functions instead (ADR-0040 step 1).
+
+    Step 2 of ADR-0040 will eliminate this function by providing
+    SECURITY DEFINER functions or a separate privileged connection for each
+    remaining cross-tenant operation.
+    """
+    await session.execute(text("SET LOCAL row_security = off"))
+
+
+async def get_asset_by_job_id(
+    session: AsyncSession, job_id: str
+) -> tuple[str | None, str | None]:
+    """Return (asset_id, client_id) for a provider job ID, bypassing RLS.
+
+    Calls the SECURITY DEFINER function vos_get_asset_by_job_id so the
+    webhook ingress can bootstrap tenant context without BYPASSRLS on the
+    connection role (ADR-0040).  Returns (None, None) if not found.
+    """
+    result = await session.execute(
+        text("SELECT asset_id, client_id FROM vos_get_asset_by_job_id(:job_id)"),
+        {"job_id": job_id},
     )
     row = result.first()
     if row is None:
-        raise LookupError(f"Sprint {sprint_id} not found")
-    client_id = str(row[0])
-    await set_tenant_context(session, client_id)
-    await session.execute(text("SET LOCAL row_security = on"))
-    return client_id
+        return None, None
+    return str(row[0]), str(row[1])
 
 
 async def get_asset_notification_context(
@@ -113,34 +143,17 @@ async def get_asset_notification_context(
 ) -> tuple[str | None, str | None, str | None]:
     """Return (sprint_id, client_id, webhook_url) for *asset_id*.
 
-    Bypasses RLS to retrieve the client's webhook_url.
+    Calls the SECURITY DEFINER function vos_get_asset_notification_context
+    so the upload task can fan out webhook delivery without requiring
+    BYPASSRLS on the connection role (ADR-0040).
     Returns (None, None, None) if the asset is not found.
     """
     async with get_session() as session:
-        await bypass_rls(session)
         result = await session.execute(
-            text(
-                "SELECT a.sprint_id, s.client_id, c.webhook_url "
-                "FROM assets a "
-                "JOIN sprints s ON a.sprint_id = s.id "
-                "JOIN clients c ON s.client_id = c.id "
-                "WHERE a.id = :asset_id LIMIT 1"
-            ),
+            text("SELECT sprint_id, client_id, webhook_url FROM vos_get_asset_notification_context(:asset_id)"),
             {"asset_id": asset_id},
         )
         row = result.first()
         if row is None:
             return None, None, None
         return str(row[0]), str(row[1]), row[2]
-
-
-async def bypass_rls(session: AsyncSession) -> None:
-    """Disable row-level security for the current transaction.
-
-    Requires the DB user to have BYPASSRLS privilege (Supabase service role
-    in production; postgres superuser in development). Used exclusively by
-    the webhook handler to look up assets by provider_job_id without a
-    client context. Call set_tenant_context afterwards to re-apply RLS for
-    any subsequent writes.
-    """
-    await session.execute(text("SET LOCAL row_security = off"))

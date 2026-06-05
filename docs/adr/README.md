@@ -38,4 +38,14 @@ ADRs explain important decisions, the context behind them, alternatives consider
 | [0028](0028-provider-webhook-support.md) | Provider webhook support | Accepted |
 | [0029](0029-cross-client-prompt-library.md) | Cross-client prompt library | Accepted |
 | [0030](0030-observability-and-failure-diagnostics.md) | Observability and failure diagnostics | Accepted |
-| [0031](0031-vos-native-domain-evolution-roadmap.md) | Evolve the architecture toward a VOS-native creative domain | Proposed |
+| [0031](0031-split-generation-storage-status.md) | Split generation_status from storage_status | Accepted |
+| [0032](0032-ssrf-protection-for-outbound-webhooks.md) | SSRF protection for outbound webhook delivery | Accepted |
+| [0033](0033-cross-tenant-authorization-regression-matrix.md) | Cross-tenant authorization regression matrix | Accepted |
+| [0034](0034-provider-usage-ledger.md) | Provider usage ledger and global daily quota | Accepted |
+| [0035](0035-circuit-breaker-for-provider-resilience.md) | Circuit breaker for provider resilience | Accepted |
+| [0036](0036-outbound-webhook-retry-policy.md) | Outbound webhook retry policy | Accepted |
+| [0037](0037-asset-stage-and-lineage-model.md) | Asset stage and lineage model | Accepted |
+| [0038](0038-brand-kit-asset-lock-v2.md) | BrandKit Asset Lock (campaign visual system v2) | Accepted |
+| [0039](0039-vos-native-domain-evolution-roadmap.md) | Evolve the architecture toward a VOS-native creative domain | Proposed |
+| [0040](0040-rls-enforcement-role-model-and-ssrf-ip-pinning.md) | RLS enforcement role model and outbound SSRF IP pinning | Accepted |
+| [0044](0044-vos-as-mcp-client-for-provider-mcp-servers.md) | VOS as MCP client for provider MCP servers | Accepted |

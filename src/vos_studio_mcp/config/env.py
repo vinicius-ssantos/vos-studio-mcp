@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     oauth_issuer_url: str = Field(default="", alias="OAUTH_ISSUER_URL")
     oauth_client_id: str = Field(default="", alias="OAUTH_CLIENT_ID")
     oauth_client_secret: str = Field(default="", alias="OAUTH_CLIENT_SECRET")
+    # Expected JWT audience. When set, bearer tokens whose `aud` claim does not
+    # contain this value are rejected (prevents cross-resource token replay).
+    # Left empty by default so existing deployments are not broken.
+    oauth_audience: str = Field(default="", alias="OAUTH_AUDIENCE")
     mcp_oauth_issuer_url: str = Field(default="", alias="MCP_OAUTH_ISSUER_URL")
     mcp_oauth_signing_key: str = Field(default="", alias="MCP_OAUTH_SIGNING_KEY")
     mcp_oauth_authorization_secret: str = Field(

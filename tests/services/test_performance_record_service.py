@@ -40,23 +40,29 @@ def _make_input(**overrides) -> PerformanceRecordInput:
     return PerformanceRecordInput(**defaults)
 
 
-def _make_session_ctx(asset=None, sprint=None, record_id=None) -> MagicMock:
-    """Return an async context manager mock for get_session."""
+def _asset_mock() -> MagicMock:
+    """Asset returned by the patched get_asset_with_client helper."""
+    a = MagicMock()
+    a.sprint_id = uuid.uuid4()
+    return a
+
+
+def _make_session_ctx(sprint=None, record_id=None) -> MagicMock:
+    """Return an async context manager mock for get_session.
+
+    The asset and client_id come from the patched get_asset_with_client
+    helper (which also sets the RLS tenant context), so session.get is now
+    used only for the Sprint lookup.
+    """
     _record_id = record_id or uuid.uuid4()
 
-    asset_mock = asset or MagicMock()
     sprint_mock = sprint or MagicMock()
-
-    if asset is None:
-        asset_mock.sprint_id = uuid.uuid4()
-
     if sprint is None:
         sprint_mock.client_id = uuid.uuid4()
         sprint_mock.brand_kit_id = uuid.uuid4()
 
     session = AsyncMock()
-    # .get returns the right ORM object by call order
-    session.get = AsyncMock(side_effect=[asset_mock, sprint_mock])
+    session.get = AsyncMock(return_value=sprint_mock)
     session.add = MagicMock()
     session.commit = AsyncMock()
 
@@ -86,8 +92,11 @@ async def test_create_performance_record_returns_response() -> None:
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
-        patch(f"{_MODULE}.set_tenant_context", new_callable=AsyncMock),
+        patch(
+            f"{_MODULE}.get_asset_with_client",
+            new=AsyncMock(return_value=(_asset_mock(), str(uuid.uuid4()))),
+        ),
+        patch(f"{_MODULE}.assert_owns_client"),
         patch(f"{_MODULE}.emit_audit_event", new_callable=AsyncMock),
     ):
         result = await create_performance_record(data)
@@ -110,8 +119,11 @@ async def test_create_performance_record_emits_audit_event() -> None:
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
-        patch(f"{_MODULE}.set_tenant_context", new_callable=AsyncMock),
+        patch(
+            f"{_MODULE}.get_asset_with_client",
+            new=AsyncMock(return_value=(_asset_mock(), str(uuid.uuid4()))),
+        ),
+        patch(f"{_MODULE}.assert_owns_client"),
         patch(f"{_MODULE}.emit_audit_event", new_callable=AsyncMock) as mock_emit,
     ):
         await create_performance_record(data)
@@ -132,8 +144,11 @@ async def test_create_performance_record_adds_orm_record_to_session() -> None:
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
-        patch(f"{_MODULE}.set_tenant_context", new_callable=AsyncMock),
+        patch(
+            f"{_MODULE}.get_asset_with_client",
+            new=AsyncMock(return_value=(_asset_mock(), str(uuid.uuid4()))),
+        ),
+        patch(f"{_MODULE}.assert_owns_client"),
         patch(f"{_MODULE}.emit_audit_event", new_callable=AsyncMock),
     ):
         await create_performance_record(data)
@@ -161,14 +176,17 @@ async def test_create_performance_record_asset_not_found() -> None:
     data = _make_input()
 
     session = AsyncMock()
-    session.get = AsyncMock(return_value=None)  # asset not found
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=session)
     ctx.__aexit__ = AsyncMock(return_value=False)
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
+        # Asset not found → helper returns (None, None) before any sprint read.
+        patch(
+            f"{_MODULE}.get_asset_with_client",
+            new=AsyncMock(return_value=(None, None)),
+        ),
         pytest.raises(VosError) as exc,
     ):
         await create_performance_record(data)
@@ -182,18 +200,21 @@ async def test_create_performance_record_sprint_not_found() -> None:
     from vos_studio_mcp.services.performance_record_service import create_performance_record
 
     data = _make_input()
-    asset_mock = MagicMock()
-    asset_mock.sprint_id = uuid.uuid4()
+    asset_mock = _asset_mock()
 
     session = AsyncMock()
-    session.get = AsyncMock(side_effect=[asset_mock, None])  # sprint not found
+    session.get = AsyncMock(return_value=None)  # sprint not found
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=session)
     ctx.__aexit__ = AsyncMock(return_value=False)
 
     with (
         patch(f"{_MODULE}.get_session", return_value=ctx),
-        patch(f"{_MODULE}.bypass_rls", new_callable=AsyncMock),
+        patch(
+            f"{_MODULE}.get_asset_with_client",
+            new=AsyncMock(return_value=(asset_mock, str(uuid.uuid4()))),
+        ),
+        patch(f"{_MODULE}.assert_owns_client"),
         pytest.raises(VosError) as exc,
     ):
         await create_performance_record(data)

@@ -1,4 +1,4 @@
-# ADR-0031 — Evolve the architecture toward a VOS-native creative domain
+# ADR-0039 — Evolve the architecture toward a VOS-native creative domain
 
 Status: Proposed  
 Date: 2026-05-26

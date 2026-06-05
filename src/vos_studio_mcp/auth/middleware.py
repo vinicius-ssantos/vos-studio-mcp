@@ -1,5 +1,6 @@
 """Bearer token auth middleware (ADR-0019)."""
 
+import hmac
 import logging
 
 from fastapi import Request, Response
@@ -78,7 +79,7 @@ async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) 
 
     token = auth_header[7:]
 
-    if settings.dev_bearer_token and token == settings.dev_bearer_token:
+    if settings.dev_bearer_token and hmac.compare_digest(token, settings.dev_bearer_token):
         set_current_client_id(settings.dev_client_id)
         return await call_next(request)
 
@@ -93,7 +94,9 @@ async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) 
         return await call_next(request)
     elif settings.oauth_issuer_url:
         # JWKS mode (RS/ES) — takes precedence when configured.
-        client_id = await validate_bearer_token(token, settings.oauth_issuer_url)
+        client_id = await validate_bearer_token(
+            token, settings.oauth_issuer_url, settings.oauth_audience or None
+        )
     elif settings.supabase_jwt_secret:
         # Supabase HS256 mode — used when only the symmetric JWT secret is configured.
         client_id = validate_supabase_token(token, settings.supabase_jwt_secret)

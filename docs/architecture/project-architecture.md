@@ -378,7 +378,7 @@ These are not architecture-breakers, but they are the kinds of details that affe
 This document is descriptive.
 
 The normative architectural direction remains in the ADRs, especially:
-- `docs/adr/0031-vos-native-domain-evolution-roadmap.md`
+- `docs/adr/0039-vos-native-domain-evolution-roadmap.md`
 - `docs/adr/0037-*`
 - `docs/adr/0038-*`
 

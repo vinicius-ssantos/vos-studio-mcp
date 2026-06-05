@@ -11,7 +11,7 @@ from vos_studio_mcp.schemas.client import (
     SetClientWebhookInput,
     SetClientWebhookResponse,
 )
-from vos_studio_mcp.services.database import bypass_rls, get_session
+from vos_studio_mcp.services.database import get_session, set_tenant_context
 from vos_studio_mcp.services.webhook_ssrf_guard import validate_webhook_url
 
 log = logging.getLogger(__name__)
@@ -60,7 +60,10 @@ async def set_client_webhook(
         raise VosError(ErrorCode.INVALID_INPUT, f"Invalid client_id: {client_id!r}") from exc
 
     async with get_session() as session:
-        await bypass_rls(session)
+        # client_id comes from the authenticated context (never caller input),
+        # so scope the session to it and let RLS enforce that we can only read
+        # and mutate this client's own row — no bypass_rls (ADR-0040).
+        await set_tenant_context(session, client_id)
         client = await session.get(Client, cid)
 
         if client is None:

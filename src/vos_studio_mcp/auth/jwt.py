@@ -25,13 +25,21 @@ _SUPABASE_REQUIRED_ROLE = "authenticated"
 # ---------------------------------------------------------------------------
 
 
-async def validate_bearer_token(token: str, issuer_url: str) -> str | None:
-    """Validate a JWT against the issuer's JWKS endpoint. Returns client_id or None."""
+async def validate_bearer_token(
+    token: str, issuer_url: str, audience: str | None = None
+) -> str | None:
+    """Validate a JWT against the issuer's JWKS endpoint. Returns client_id or None.
+
+    When *audience* is provided, the token's ``aud`` claim must contain it —
+    this prevents a token minted by the same IdP for a different resource from
+    being replayed against this server.
+    """
     try:
         key_set = await _fetch_key_set(issuer_url)
         decoded = jwt.decode(token, key_set, algorithms=_ALLOWED_ALGORITHMS)
         claims: dict[str, Any] = decoded.claims
-        _check_expiry(claims)
+        _check_time_claims(claims)
+        _check_audience(claims, audience)
         return _extract_client_id(claims)
     except JoseError as exc:
         log.warning("jwt validation failed", extra={"reason": str(exc)})
@@ -41,10 +49,23 @@ async def validate_bearer_token(token: str, issuer_url: str) -> str | None:
         return None
 
 
-def _check_expiry(claims: dict[str, Any]) -> None:
+def _check_time_claims(claims: dict[str, Any]) -> None:
+    now = int(time.time())
     exp = claims.get("exp")
-    if exp is not None and int(exp) < int(time.time()):
+    if exp is not None and int(exp) < now:
         raise ValueError("token expired")
+    nbf = claims.get("nbf")
+    if nbf is not None and int(nbf) > now:
+        raise ValueError("token not yet valid (nbf)")
+
+
+def _check_audience(claims: dict[str, Any], audience: str | None) -> None:
+    if not audience:
+        return  # audience validation is opt-in via OAUTH_AUDIENCE
+    aud = claims.get("aud")
+    allowed = {aud} if isinstance(aud, str) else set(aud or [])
+    if audience not in allowed:
+        raise ValueError("token audience mismatch")
 
 
 async def _fetch_key_set(issuer_url: str) -> KeySet:
@@ -84,7 +105,7 @@ def validate_supabase_token(token: str, jwt_secret: str) -> str | None:
         oct_key = OctKey.import_key(jwt_secret.encode("utf-8"))
         decoded = jwt.decode(token, oct_key, algorithms=["HS256"])
         claims: dict[str, Any] = decoded.claims
-        _check_expiry(claims)
+        _check_time_claims(claims)
         _check_supabase_role(claims)
         return _extract_supabase_client_id(claims)
     except JoseError as exc:
