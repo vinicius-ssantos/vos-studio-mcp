@@ -157,11 +157,13 @@ async def test_large_budget_exceeded_message_contains_values() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _reconcile_ctx(*get_returns: object) -> tuple[MagicMock, AsyncMock]:
-    """Privileged-session ctx whose .get() returns *get_returns* in call order
-    (asset, then event, then sprint). Returns (ctx, session)."""
+def _reconcile_ctx(asset: object, *locked: object) -> tuple[MagicMock, AsyncMock]:
+    """Privileged-session ctx: the asset is returned by .get(); the event and
+    sprint (in order) are returned by .execute().scalar_one_or_none() — both are
+    now fetched under SELECT … FOR UPDATE. Returns (ctx, session)."""
     session = AsyncMock()
-    session.get = AsyncMock(side_effect=list(get_returns))
+    session.get = AsyncMock(return_value=asset)
+    session.execute = AsyncMock(side_effect=[_lock_result(v) for v in locked])
     session.commit = AsyncMock()
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=session)
@@ -190,7 +192,8 @@ async def test_reconcile_affirms_estimate_when_provider_reports_no_cost() -> Non
     assert actual == 0.10
     assert event.actual_usd == 0.10
     # delta is zero, so sprint is never fetched and spend is unchanged
-    assert session.get.await_count == 2
+    session.get.assert_awaited_once()  # asset
+    session.execute.assert_awaited_once()  # event lock only
     assert sprint.spent_usd == 1.0
 
 
@@ -249,7 +252,9 @@ async def test_reconcile_is_idempotent_when_already_reconciled() -> None:
         actual = await reconcile_actual_cost(str(uuid.uuid4()), 0.18)
 
     assert actual == 0.0
-    assert session.get.await_count == 2  # asset + event; sprint never touched
+    # asset fetched + event locked; sprint never touched
+    session.get.assert_awaited_once()
+    session.execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -367,11 +372,20 @@ async def test_get_provider_daily_summary_provider_filter_used() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _release_ctx(*get_returns: object) -> tuple[MagicMock, AsyncMock]:
-    """Privileged-session ctx whose .get() returns *get_returns* in call order
-    (asset, then event, then sprint). Returns (ctx, session)."""
+def _lock_result(value: object) -> MagicMock:
+    """A mock execute() result whose scalar_one_or_none() returns *value*."""
+    r = MagicMock()
+    r.scalar_one_or_none = MagicMock(return_value=value)
+    return r
+
+
+def _release_ctx(asset: object, *locked: object) -> tuple[MagicMock, AsyncMock]:
+    """Privileged-session ctx: the asset is returned by .get(); the event and
+    sprint (in order) are returned by .execute().scalar_one_or_none() — both are
+    now fetched under SELECT … FOR UPDATE. Returns (ctx, session)."""
     session = AsyncMock()
-    session.get = AsyncMock(side_effect=list(get_returns))
+    session.get = AsyncMock(return_value=asset)
+    session.execute = AsyncMock(side_effect=[_lock_result(v) for v in locked])
     session.commit = AsyncMock()
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=session)
@@ -395,8 +409,9 @@ async def test_release_returns_zero_when_no_usage_event_link() -> None:
         released = await release_reserved_budget(str(uuid.uuid4()))
 
     assert released == 0.0
-    # only the asset was fetched; no event/sprint lookup
+    # only the asset was fetched; no event/sprint lock
     session.get.assert_awaited_once()
+    session.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -427,8 +442,9 @@ async def test_release_is_idempotent_when_already_reconciled() -> None:
         released = await release_reserved_budget(str(uuid.uuid4()))
 
     assert released == 0.0
-    # asset + event fetched, but sprint never (guarded before any refund)
-    assert session.get.await_count == 2
+    # asset fetched + event locked, but sprint never (guarded before any refund)
+    session.get.assert_awaited_once()
+    session.execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio

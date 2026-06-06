@@ -14,6 +14,7 @@ import logging
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Asset, ProviderUsageEvent, Sprint
 from vos_studio_mcp.config.env import get_settings
@@ -100,6 +101,26 @@ async def check_provider_budget(
     return str(event.id)
 
 
+async def _lock_usage_event(
+    session: AsyncSession, event_id: uuid.UUID
+) -> ProviderUsageEvent | None:
+    """Fetch a usage event under ``SELECT … FOR UPDATE`` to serialize the
+    estimate→actual / refund transition against concurrent poll tasks."""
+    result = await session.execute(
+        select(ProviderUsageEvent).where(ProviderUsageEvent.id == event_id).with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
+async def _lock_sprint(session: AsyncSession, sprint_id: uuid.UUID) -> Sprint | None:
+    """Fetch a sprint under ``SELECT … FOR UPDATE`` so the spend adjustment can
+    never lose an update against the request path (which also locks the row)."""
+    result = await session.execute(
+        select(Sprint).where(Sprint.id == sprint_id).with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
 async def reconcile_actual_cost(asset_id: str, provider_cost_usd: float | None) -> float:
     """Reconcile a completed generation's actual billed cost (ADR-0039 #5).
 
@@ -127,9 +148,10 @@ async def reconcile_actual_cost(asset_id: str, provider_cost_usd: float | None) 
             asset: Asset | None = await session.get(Asset, uuid.UUID(asset_id))
             if asset is None or asset.provider_usage_event_id is None:
                 return 0.0
-            event: ProviderUsageEvent | None = await session.get(
-                ProviderUsageEvent, asset.provider_usage_event_id
-            )
+            # Lock the ledger row so a concurrent reconcile/release (Celery
+            # redelivery or overlapping polls) serializes here: the second caller
+            # blocks until the first commits, then sees actual_usd set and no-ops.
+            event = await _lock_usage_event(session, asset.provider_usage_event_id)
             if event is None or event.actual_usd is not None:
                 return 0.0  # not linked, or already reconciled — idempotent no-op
             reserved = event.estimated_usd or 0.0
@@ -137,7 +159,7 @@ async def reconcile_actual_cost(asset_id: str, provider_cost_usd: float | None) 
             event.actual_usd = actual
             delta = actual - reserved
             if delta and asset.sprint_id is not None:
-                sprint: Sprint | None = await session.get(Sprint, asset.sprint_id)
+                sprint = await _lock_sprint(session, asset.sprint_id)
                 if sprint is not None:
                     sprint.spent_usd = max(0.0, sprint.spent_usd + delta)
             await session.commit()
@@ -174,16 +196,16 @@ async def release_reserved_budget(asset_id: str) -> float:
             asset: Asset | None = await session.get(Asset, uuid.UUID(asset_id))
             if asset is None or asset.provider_usage_event_id is None:
                 return 0.0
-            event: ProviderUsageEvent | None = await session.get(
-                ProviderUsageEvent, asset.provider_usage_event_id
-            )
+            # Lock the ledger row so a concurrent release/reconcile serializes
+            # here and the refund is applied at most once (see reconcile note).
+            event = await _lock_usage_event(session, asset.provider_usage_event_id)
             if event is None or event.actual_usd is not None:
                 return 0.0  # not linked, or already reconciled — idempotent no-op
             reserved = event.estimated_usd or 0.0
             # Mark reconciled (failed → no actual charge) to make this once-only.
             event.actual_usd = 0.0
             if reserved and asset.sprint_id is not None:
-                sprint: Sprint | None = await session.get(Sprint, asset.sprint_id)
+                sprint = await _lock_sprint(session, asset.sprint_id)
                 if sprint is not None:
                     sprint.spent_usd = max(0.0, sprint.spent_usd - reserved)
             await session.commit()
