@@ -99,11 +99,11 @@ async def _check_and_update(asset_id: str) -> str:
         else:
             provider_job_id = asset.provider_job_id
             asset.generation_status = "failed"
-            # Failed generation produced no deliverable — return the reserved
-            # estimate to the sprint budget (ADR-0039 #5). Atomic with the
-            # status transition; idempotent.
-            released = await release_reserved_budget(session, asset)
             await session.commit()
+            # Failed generation produced no deliverable — return the reserved
+            # estimate to the sprint budget (ADR-0039 #5). Runs over the
+            # privileged connection (provider_usage_events RLS); idempotent.
+            released = await release_reserved_budget(asset_id)
             if released:
                 log.info(
                     "generation.budget_released",
@@ -147,8 +147,8 @@ async def _mark_status(asset_id: str, status: str) -> None:
         asset, _ = await get_asset_with_client(session, asset_id)
         if asset is not None:
             asset.generation_status = status
-            # On timeout-driven failure, release the reserved estimate too
-            # (ADR-0039 #5). Idempotent via release_reserved_budget.
-            if status == "failed":
-                await release_reserved_budget(session, asset)
             await session.commit()
+    # On timeout-driven failure, release the reserved estimate too (ADR-0039 #5).
+    # Runs over the privileged connection; idempotent.
+    if status == "failed":
+        await release_reserved_budget(asset_id)

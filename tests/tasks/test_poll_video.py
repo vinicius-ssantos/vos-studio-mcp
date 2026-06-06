@@ -166,8 +166,8 @@ async def test_check_releases_reserved_budget_on_job_failure() -> None:
     assert result == "done"
     assert asset.generation_status == "failed"
     mock_release.assert_awaited_once()
-    # released within the same session as the failed transition
-    assert mock_release.call_args[0][1] is asset
+    # release is invoked by asset_id (self-contained privileged session)
+    assert mock_release.call_args[0][0] == "asset-001"
 
 
 @pytest.mark.asyncio

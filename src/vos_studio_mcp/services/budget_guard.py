@@ -11,7 +11,6 @@ import logging
 import uuid
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Asset, ProviderUsageEvent, Sprint
 from vos_studio_mcp.config.env import get_settings
@@ -122,7 +121,7 @@ async def record_actual_cost(event_id: str, actual_usd: float) -> None:
         )
 
 
-async def release_reserved_budget(session: AsyncSession, asset: Asset) -> float:
+async def release_reserved_budget(asset_id: str) -> float:
     """Return a failed/timed-out generation's reserved estimate to the sprint.
 
     The request path reserves the *estimated* cost by incrementing
@@ -131,25 +130,41 @@ async def release_reserved_budget(session: AsyncSession, asset: Asset) -> float:
     reservation must be returned to the sprint budget so sprint-level spend
     stays truthful (ADR-0039 #5, ADR-0034).
 
+    Runs over the **privileged connection** because the ``provider_usage_events``
+    RLS policy is keyed on a tenant variable the poll worker's session does not
+    set, so the main role cannot see the ledger row (same reason
+    ``check_provider_budget`` / ``record_actual_cost`` are privileged).
+
     Idempotent: guarded by ``ProviderUsageEvent.actual_usd IS NULL`` (a failed
-    or already-reconciled event is a no-op). Runs in the caller's session so
-    the release commits atomically with the failed-status transition. Returns
-    the amount released (``0.0`` when there is nothing to release).
+    or already-reconciled event is a no-op). Best-effort: swallows and logs
+    errors so it never blocks the poll workflow. Returns the amount released
+    (``0.0`` when there is nothing to release).
     """
-    event_id = asset.provider_usage_event_id
-    if event_id is None:
+    try:
+        async with get_privileged_session() as session:
+            asset: Asset | None = await session.get(Asset, uuid.UUID(asset_id))
+            if asset is None or asset.provider_usage_event_id is None:
+                return 0.0
+            event: ProviderUsageEvent | None = await session.get(
+                ProviderUsageEvent, asset.provider_usage_event_id
+            )
+            if event is None or event.actual_usd is not None:
+                return 0.0  # not linked, or already reconciled — idempotent no-op
+            reserved = event.estimated_usd or 0.0
+            # Mark reconciled (failed → no actual charge) to make this once-only.
+            event.actual_usd = 0.0
+            if reserved and asset.sprint_id is not None:
+                sprint: Sprint | None = await session.get(Sprint, asset.sprint_id)
+                if sprint is not None:
+                    sprint.spent_usd = max(0.0, sprint.spent_usd - reserved)
+            await session.commit()
+            return reserved
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "budget_guard.release_failed",
+            extra={"asset_id": asset_id, "reason": str(exc)},
+        )
         return 0.0
-    event: ProviderUsageEvent | None = await session.get(ProviderUsageEvent, event_id)
-    if event is None or event.actual_usd is not None:
-        return 0.0  # not linked, or already reconciled — idempotent no-op
-    reserved = event.estimated_usd or 0.0
-    # Mark reconciled (failed → no actual charge) to make the release once-only.
-    event.actual_usd = 0.0
-    if reserved and asset.sprint_id is not None:
-        sprint: Sprint | None = await session.get(Sprint, asset.sprint_id)
-        if sprint is not None:
-            sprint.spent_usd = max(0.0, sprint.spent_usd - reserved)
-    return reserved
 
 
 async def get_provider_daily_summary(
