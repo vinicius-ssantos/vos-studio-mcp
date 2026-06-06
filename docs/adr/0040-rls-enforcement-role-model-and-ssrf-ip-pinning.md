@@ -13,6 +13,9 @@
 >   refresh, the global provider-budget ledger) now use a dedicated privileged
 >   connection (`get_privileged_session`, `DATABASE_PRIVILEGED_URL`); the audit
 >   writer uses a plain session since `audit_logs` has no RLS policy.
+> - Decision 1 follow-up — `provider_usage_events` RLS policy aligned to
+>   `app.current_client_id` in migration 0018; clients can now read their own
+>   usage events under the main role.
 
 ---
 
@@ -54,16 +57,6 @@ However:
 CI already proves the policies are correct by running the isolation tests as the
 non-privileged `vos_app` role — but the application engine itself uses
 `DATABASE_URL`, which the documentation points at a superuser.
-
-- **Known follow-up (RLS session-variable drift).** Every tenant table keys its
-  policy on `app.current_client_id` (set by `set_tenant_context`) *except*
-  `provider_usage_events`, whose policy (migration `0011`) checks
-  `app.tenant_id` — a variable nothing in the app ever sets. Under a genuinely
-  RLS-subject role the `provider_usage_events` policy therefore denies all rows,
-  so any read of that table must go through the privileged connection
-  (`get_privileged_session`). All current callers do. Aligning the policy to
-  `app.current_client_id` (so clients can read their own usage events under the
-  main role) is deferred to a dedicated RLS migration with isolation tests.
 
 ### Finding 2 — DNS rebinding (TOCTOU) on outbound webhook delivery
 
