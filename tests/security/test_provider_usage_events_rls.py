@@ -22,7 +22,7 @@ import pytest
 from vos_studio_mcp.services.budget_guard import (
     check_provider_budget,
     get_provider_daily_summary,
-    record_actual_cost,
+    reconcile_actual_cost,
     release_reserved_budget,
 )
 
@@ -188,26 +188,27 @@ class TestCrossTenantReadIsolation:
         assert released == 0.0
 
     @pytest.mark.asyncio
-    async def test_record_actual_cost_scoped_to_event_id(self) -> None:
-        """record_actual_cost must fetch the event by the supplied event_id and
-        must not update a different tenant's event."""
-        event_id = str(uuid.uuid4())
-        event = MagicMock(actual_usd=None)
+    async def test_reconcile_actual_cost_scoped_to_asset_id(self) -> None:
+        """reconcile_actual_cost must fetch the asset by the supplied asset_id
+        and must not reconcile a different tenant's asset."""
+        asset_id = str(uuid.uuid4())
+        asset = MagicMock()
+        asset.provider_usage_event_id = None  # no event — early return after fetch
 
         session = AsyncMock()
-        session.get = AsyncMock(return_value=event)
+        session.get = AsyncMock(return_value=asset)
         session.commit = AsyncMock()
         ctx = MagicMock()
         ctx.__aenter__ = AsyncMock(return_value=session)
         ctx.__aexit__ = AsyncMock(return_value=False)
 
         with patch(_GET_SESSION, return_value=ctx):
-            await record_actual_cost(event_id, 0.08)
+            actual = await reconcile_actual_cost(asset_id, 0.08)
 
         call_args = session.get.call_args
         fetched_id = call_args.args[1]
-        assert fetched_id == uuid.UUID(event_id)
-        assert event.actual_usd == 0.08
+        assert fetched_id == uuid.UUID(asset_id)
+        assert actual == 0.0
 
 
 # ===========================================================================

@@ -10,7 +10,7 @@ from vos_studio_mcp.errors import ErrorCode, VosError
 from vos_studio_mcp.services.budget_guard import (
     check_provider_budget,
     get_provider_daily_summary,
-    record_actual_cost,
+    reconcile_actual_cost,
     release_reserved_budget,
 )
 
@@ -153,55 +153,129 @@ async def test_large_budget_exceeded_message_contains_values() -> None:
 
 
 # ---------------------------------------------------------------------------
-# record_actual_cost
+# reconcile_actual_cost — billed-cost reconciliation on completion (ADR-0039 #5)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_record_actual_cost_updates_event() -> None:
-    event_id = str(uuid.uuid4())
-    event_mock = MagicMock()
-
+def _reconcile_ctx(*get_returns: object) -> tuple[MagicMock, AsyncMock]:
+    """Privileged-session ctx whose .get() returns *get_returns* in call order
+    (asset, then event, then sprint). Returns (ctx, session)."""
     session = AsyncMock()
-    session.get = AsyncMock(return_value=event_mock)
+    session.get = AsyncMock(side_effect=list(get_returns))
     session.commit = AsyncMock()
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=session)
     ctx.__aexit__ = AsyncMock(return_value=False)
-
-    with (
-        patch(_GET_SESSION, return_value=ctx),
-    ):
-        await record_actual_cost(event_id, actual_usd=0.08)
-
-    assert event_mock.actual_usd == 0.08
-    session.commit.assert_awaited_once()
+    return ctx, session
 
 
-@pytest.mark.asyncio
-async def test_record_actual_cost_swallows_db_error() -> None:
-    """DB errors in record_actual_cost must not propagate."""
-    with (
-        patch(_GET_SESSION, side_effect=RuntimeError("db gone")),
-    ):
-        # Should not raise
-        await record_actual_cost("some-id", 0.08)
+def _reconcile_asset() -> MagicMock:
+    asset = MagicMock()
+    asset.provider_usage_event_id = uuid.uuid4()
+    asset.sprint_id = uuid.uuid4()
+    return asset
 
 
 @pytest.mark.asyncio
-async def test_record_actual_cost_logs_when_event_not_found() -> None:
-    """When the event is not found, function returns without error."""
-    session = AsyncMock()
-    session.get = AsyncMock(return_value=None)
+async def test_reconcile_affirms_estimate_when_provider_reports_no_cost() -> None:
+    """No provider cost → actual = estimate, sprint spend unchanged (delta 0)."""
+    asset = _reconcile_asset()
+    event = MagicMock(estimated_usd=0.10, actual_usd=None)
+    sprint = MagicMock(spent_usd=1.0)
+    ctx, session = _reconcile_ctx(asset, event, sprint)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        actual = await reconcile_actual_cost(str(uuid.uuid4()), None)
+
+    assert actual == 0.10
+    assert event.actual_usd == 0.10
+    # delta is zero, so sprint is never fetched and spend is unchanged
+    assert session.get.await_count == 2
+    assert sprint.spent_usd == 1.0
+
+
+@pytest.mark.asyncio
+async def test_reconcile_corrects_sprint_when_billed_above_estimate() -> None:
+    """Provider billed more than estimated → sprint spend rises by the delta."""
+    asset = _reconcile_asset()
+    event = MagicMock(estimated_usd=0.10, actual_usd=None)
+    sprint = MagicMock(spent_usd=1.0)
+    ctx, _session = _reconcile_ctx(asset, event, sprint)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        actual = await reconcile_actual_cost(str(uuid.uuid4()), 0.18)
+
+    assert actual == 0.18
+    assert event.actual_usd == 0.18
+    assert sprint.spent_usd == pytest.approx(1.08)  # +0.08 delta
+
+
+@pytest.mark.asyncio
+async def test_reconcile_refunds_sprint_when_billed_below_estimate() -> None:
+    """Provider billed less than estimated → sprint spend drops by the delta."""
+    asset = _reconcile_asset()
+    event = MagicMock(estimated_usd=0.25, actual_usd=None)
+    sprint = MagicMock(spent_usd=1.0)
+    ctx, _session = _reconcile_ctx(asset, event, sprint)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        actual = await reconcile_actual_cost(str(uuid.uuid4()), 0.10)
+
+    assert actual == 0.10
+    assert sprint.spent_usd == pytest.approx(0.85)  # -0.15 delta
+
+
+@pytest.mark.asyncio
+async def test_reconcile_never_drives_spend_negative() -> None:
+    asset = _reconcile_asset()
+    event = MagicMock(estimated_usd=0.10, actual_usd=None)
+    sprint = MagicMock(spent_usd=0.05)  # less than the refund delta
+    ctx, _session = _reconcile_ctx(asset, event, sprint)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        await reconcile_actual_cost(str(uuid.uuid4()), 0.0)
+
+    assert sprint.spent_usd == 0.0  # floored at zero, not negative
+
+
+@pytest.mark.asyncio
+async def test_reconcile_is_idempotent_when_already_reconciled() -> None:
+    """If actual_usd is already set, the event was reconciled — do nothing."""
+    asset = _reconcile_asset()
+    event = MagicMock(estimated_usd=0.10, actual_usd=0.10)
+    ctx, session = _reconcile_ctx(asset, event)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        actual = await reconcile_actual_cost(str(uuid.uuid4()), 0.18)
+
+    assert actual == 0.0
+    assert session.get.await_count == 2  # asset + event; sprint never touched
+
+
+@pytest.mark.asyncio
+async def test_reconcile_returns_zero_when_no_usage_event_link() -> None:
+    asset = MagicMock()
+    asset.provider_usage_event_id = None
+    ctx, session = _reconcile_ctx(asset)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        actual = await reconcile_actual_cost(str(uuid.uuid4()), 0.10)
+
+    assert actual == 0.0
+    session.get.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_swallows_errors_and_returns_zero() -> None:
+    """Best-effort: a DB error must not propagate out of the poll workflow."""
     ctx = MagicMock()
-    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aenter__ = AsyncMock(side_effect=RuntimeError("db gone"))
     ctx.__aexit__ = AsyncMock(return_value=False)
 
-    with (
-        patch(_GET_SESSION, return_value=ctx),
-    ):
-        # Should not raise
-        await record_actual_cost(str(uuid.uuid4()), 0.08)
+    with patch(_GET_SESSION, return_value=ctx):
+        actual = await reconcile_actual_cost(str(uuid.uuid4()), 0.10)
+
+    assert actual == 0.0
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -28,12 +29,69 @@ log = logging.getLogger(__name__)
 
 
 async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
+    """Submit an API-credit video generation.
+
+    Orchestration only: each step below is an explicit, single-responsibility
+    workflow stage (ADR-0039 #2 — validate request, reserve budget, submit
+    provider job, register asset + linkage, enqueue follow-up, emit audit).
+    """
     assert_owns_client(data.client_id)
     await check_rate_limit("request_api_video", data.client_id)
 
     adapter = get_adapter(data.provider)
+    params = _build_generation_params(data)
+    estimate = await adapter.estimate_cost(params)
 
-    params = GenerationParams(
+    # Step 1 — validate the sprint and pre-check budget/limits.
+    async with get_session() as session:
+        await set_tenant_context(session, data.client_id)
+        params.budget_limit = await _validate_sprint_budget(
+            session, data, estimate.estimated_usd
+        )
+
+    # Step 2 — reserve the global provider daily quota (outside the session to
+    # avoid holding the DB connection during the extra async query).
+    usage_event_id = await check_provider_budget(
+        data.provider, data.client_id, data.sprint_id, estimate.estimated_usd
+    )
+
+    # Step 3 — submit the provider job and register the asset under a lock.
+    asset_id, job_id = await _submit_and_register(
+        adapter, data, params, estimate.estimated_usd, usage_event_id
+    )
+
+    # Step 4 — enqueue polling and emit the audit trail.
+    poll_video_job.delay(asset_id)
+    await _emit_request_audit(data, asset_id, estimate.estimated_usd)
+
+    log.info(
+        "generation.queued",
+        extra={
+            "sprint_id": data.sprint_id,
+            "asset_id": asset_id,
+            "job_id": job_id,
+            "provider": data.provider,
+            "estimated_usd": estimate.estimated_usd,
+        },
+    )
+
+    return ApiVideoResponse(
+        status="queued",
+        job_id=job_id,
+        asset_id=asset_id,
+        sprint_id=data.sprint_id,
+        estimated_cost_usd=estimate.estimated_usd,
+        summary=(
+            f"Video generation queued for sprint '{data.sprint_id}'. "
+            f"Job ID: {job_id}. Estimated cost: ${estimate.estimated_usd:.2f}."
+        ),
+        next_action="get_video_job_status",
+    )
+
+
+def _build_generation_params(data: ApiVideoInput) -> GenerationParams:
+    """Translate the tool input into a provider-agnostic GenerationParams."""
+    return GenerationParams(
         sprint_id=data.sprint_id,
         prompt_version=data.prompt_version,
         preset_version=data.preset_version,
@@ -46,75 +104,80 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
         aspect_ratio=data.aspect_ratio,
     )
 
-    estimate = await adapter.estimate_cost(params)
 
-    async with get_session() as session:
-        await set_tenant_context(session, data.client_id)
+async def _validate_sprint_budget(
+    session: Any, data: ApiVideoInput, estimated_usd: float
+) -> BudgetLimit:
+    """Validate the sprint is usable and the request fits budget/video limits.
 
-        sprint = await session.get(Sprint, uuid.UUID(data.sprint_id))
-        if sprint is None:
-            raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
-        if str(sprint.client_id) != data.client_id:
-            raise VosError(ErrorCode.INVALID_INPUT, "sprint does not belong to this client")
-        if sprint.sprint_status != "open":
-            raise VosError(ErrorCode.SPRINT_CLOSED, f"Sprint {data.sprint_id} is not open")
+    Returns the BudgetLimit to attach to the provider request. Raises VosError
+    on any violation (not found, wrong owner, closed, budget, video count).
+    """
+    sprint = await session.get(Sprint, uuid.UUID(data.sprint_id))
+    if sprint is None:
+        raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
+    if str(sprint.client_id) != data.client_id:
+        raise VosError(ErrorCode.INVALID_INPUT, "sprint does not belong to this client")
+    if sprint.sprint_status != "open":
+        raise VosError(ErrorCode.SPRINT_CLOSED, f"Sprint {data.sprint_id} is not open")
 
-        if sprint.spent_usd + estimate.estimated_usd > sprint.max_spend_usd:
-            raise VosError(
-                ErrorCode.BUDGET_EXCEEDED,
-                f"Generation would exceed sprint budget "
-                f"(remaining ${sprint.max_spend_usd - sprint.spent_usd:.2f}, "
-                f"estimated ${estimate.estimated_usd:.2f})",
-            )
-
-        if sprint.max_videos is not None:
-            video_count_result = await session.execute(
-                select(func.count()).where(
-                    Asset.sprint_id == sprint.id,
-                    Asset.provider.in_(["higgsfield", "higgsfield_mcp"]),
-                )
-            )
-            video_count = video_count_result.scalar_one()
-            if video_count >= sprint.max_videos:
-                raise VosError(
-                    ErrorCode.BUDGET_EXCEEDED,
-                    f"Sprint video limit reached ({sprint.max_videos} videos allowed)",
-                )
-
-        params.budget_limit = BudgetLimit(
-            max_spend_usd=sprint.max_spend_usd,
-            max_videos=sprint.max_videos,
+    if sprint.spent_usd + estimated_usd > sprint.max_spend_usd:
+        raise VosError(
+            ErrorCode.BUDGET_EXCEEDED,
+            f"Generation would exceed sprint budget "
+            f"(remaining ${sprint.max_spend_usd - sprint.spent_usd:.2f}, "
+            f"estimated ${estimated_usd:.2f})",
         )
 
-    # Check and record the global provider daily quota (outside session to avoid
-    # holding the DB connection while performing an additional async query).
-    usage_event_id = await check_provider_budget(
-        data.provider, data.client_id, data.sprint_id, estimate.estimated_usd
-    )
+    if sprint.max_videos is not None:
+        video_count_result = await session.execute(
+            select(func.count()).where(
+                Asset.sprint_id == sprint.id,
+                Asset.provider.in_(["higgsfield", "higgsfield_mcp"]),
+            )
+        )
+        video_count = video_count_result.scalar_one()
+        if video_count >= sprint.max_videos:
+            raise VosError(
+                ErrorCode.BUDGET_EXCEEDED,
+                f"Sprint video limit reached ({sprint.max_videos} videos allowed)",
+            )
 
+    return BudgetLimit(max_spend_usd=sprint.max_spend_usd, max_videos=sprint.max_videos)
+
+
+async def _submit_and_register(
+    adapter: Any,
+    data: ApiVideoInput,
+    params: GenerationParams,
+    estimated_usd: float,
+    usage_event_id: str | None,
+) -> tuple[str, str]:
+    """Submit the provider job and persist the asset under a row-level lock.
+
+    Re-validates budget under ``SELECT … FOR UPDATE`` to close the concurrency
+    window (Fix #67), submits to the provider, creates the Asset with its usage
+    linkage, and increments ``sprint.spent_usd`` by the estimate. Returns
+    ``(asset_id, job_id)``.
+    """
     async with get_session() as session:
         await set_tenant_context(session, data.client_id)
 
-        # Fix #67: Re-validate budget under a row-level lock to prevent concurrent
-        # requests from both passing the first validation and then both submitting.
         result = await session.execute(
-            select(Sprint)
-            .where(Sprint.id == uuid.UUID(data.sprint_id))
-            .with_for_update()
+            select(Sprint).where(Sprint.id == uuid.UUID(data.sprint_id)).with_for_update()
         )
         sprint = result.scalar_one_or_none()
         if sprint is None:  # pragma: no cover — already checked above
             raise VosError(ErrorCode.NOT_FOUND, f"Sprint {data.sprint_id} not found")
 
         # Re-validate budget under the lock to catch concurrent submissions.
-        if sprint.spent_usd + estimate.estimated_usd > sprint.max_spend_usd:
+        if sprint.spent_usd + estimated_usd > sprint.max_spend_usd:
             raise VosError(
                 ErrorCode.BUDGET_EXCEEDED,
                 f"Generation would exceed sprint budget "
                 f"(remaining ${sprint.max_spend_usd - sprint.spent_usd:.2f}, "
-                f"estimated ${estimate.estimated_usd:.2f})",
+                f"estimated ${estimated_usd:.2f})",
             )
-
 
         log.info(
             "generation.requested",
@@ -123,7 +186,11 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
         gen_result = await adapter.generate_video(params)
         log.info(
             "generation.provider_submitted",
-            extra={"sprint_id": data.sprint_id, "job_id": gen_result.job_id, "provider": data.provider},
+            extra={
+                "sprint_id": data.sprint_id,
+                "job_id": gen_result.job_id,
+                "provider": data.provider,
+            },
         )
 
         asset = Asset(
@@ -139,46 +206,25 @@ async def request_api_video(data: ApiVideoInput) -> ApiVideoResponse:
         )
         session.add(asset)
 
-        sprint.spent_usd += estimate.estimated_usd
+        sprint.spent_usd += estimated_usd
         await session.commit()
         await session.refresh(asset)
 
-    poll_video_job.delay(str(asset.id))
+    return str(asset.id), gen_result.job_id
 
+
+async def _emit_request_audit(data: ApiVideoInput, asset_id: str, estimated_usd: float) -> None:
+    """Emit the audit event for an accepted API video generation request."""
     await emit_audit_event(
         action=AuditAction.API_VIDEO_REQUESTED,
         entity_type="asset",
-        entity_id=str(asset.id),
+        entity_id=asset_id,
         actor=data.client_id,
         provider=data.provider,
         mode="api_credits",
-        cost_estimate_usd=estimate.estimated_usd,
+        cost_estimate_usd=estimated_usd,
         approval_status="approved",
         result=AuditResult.SUCCESS,
-    )
-
-    log.info(
-        "generation.queued",
-        extra={
-            "sprint_id": data.sprint_id,
-            "asset_id": str(asset.id),
-            "job_id": gen_result.job_id,
-            "provider": data.provider,
-            "estimated_usd": estimate.estimated_usd,
-        },
-    )
-
-    return ApiVideoResponse(
-        status="queued",
-        job_id=gen_result.job_id,
-        asset_id=str(asset.id),
-        sprint_id=data.sprint_id,
-        estimated_cost_usd=estimate.estimated_usd,
-        summary=(
-            f"Video generation queued for sprint '{data.sprint_id}'. "
-            f"Job ID: {gen_result.job_id}. Estimated cost: ${estimate.estimated_usd:.2f}."
-        ),
-        next_action="get_video_job_status",
     )
 
 
