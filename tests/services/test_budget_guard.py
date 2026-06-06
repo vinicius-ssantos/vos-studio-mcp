@@ -293,75 +293,92 @@ async def test_get_provider_daily_summary_provider_filter_used() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _release_session(event: MagicMock | None, sprint: MagicMock | None) -> AsyncMock:
-    """Session whose .get() returns the event then the sprint by call order."""
+def _release_ctx(*get_returns: object) -> tuple[MagicMock, AsyncMock]:
+    """Privileged-session ctx whose .get() returns *get_returns* in call order
+    (asset, then event, then sprint). Returns (ctx, session)."""
     session = AsyncMock()
-    session.get = AsyncMock(side_effect=[event, sprint])
-    return session
+    session.get = AsyncMock(side_effect=list(get_returns))
+    session.commit = AsyncMock()
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return ctx, session
+
+
+def _mock_asset(*, event_linked: bool = True) -> MagicMock:
+    asset = MagicMock()
+    asset.provider_usage_event_id = uuid.uuid4() if event_linked else None
+    asset.sprint_id = uuid.uuid4()
+    return asset
 
 
 @pytest.mark.asyncio
 async def test_release_returns_zero_when_no_usage_event_link() -> None:
-    asset = MagicMock()
-    asset.provider_usage_event_id = None
+    asset = _mock_asset(event_linked=False)
+    ctx, session = _release_ctx(asset)
 
-    session = AsyncMock()
-    session.get = AsyncMock()
-
-    released = await release_reserved_budget(session, asset)
+    with patch(_GET_SESSION, return_value=ctx):
+        released = await release_reserved_budget(str(uuid.uuid4()))
 
     assert released == 0.0
-    session.get.assert_not_awaited()
+    # only the asset was fetched; no event/sprint lookup
+    session.get.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_release_refunds_estimate_to_sprint() -> None:
+    asset = _mock_asset()
     event = MagicMock(estimated_usd=0.25, actual_usd=None)
     sprint = MagicMock(spent_usd=1.0)
+    ctx, session = _release_ctx(asset, event, sprint)
 
-    asset = MagicMock()
-    asset.provider_usage_event_id = uuid.uuid4()
-    asset.sprint_id = uuid.uuid4()
-
-    session = _release_session(event, sprint)
-    released = await release_reserved_budget(session, asset)
+    with patch(_GET_SESSION, return_value=ctx):
+        released = await release_reserved_budget(str(uuid.uuid4()))
 
     assert released == 0.25
     assert sprint.spent_usd == pytest.approx(0.75)
     # Marked reconciled so a second call is a no-op.
     assert event.actual_usd == 0.0
+    session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_release_is_idempotent_when_already_reconciled() -> None:
     """If actual_usd is already set, the event was reconciled — do nothing."""
+    asset = _mock_asset()
     event = MagicMock(estimated_usd=0.25, actual_usd=0.0)
+    ctx, session = _release_ctx(asset, event)
 
-    asset = MagicMock()
-    asset.provider_usage_event_id = uuid.uuid4()
-    asset.sprint_id = uuid.uuid4()
-
-    session = AsyncMock()
-    session.get = AsyncMock(return_value=event)
-
-    released = await release_reserved_budget(session, asset)
+    with patch(_GET_SESSION, return_value=ctx):
+        released = await release_reserved_budget(str(uuid.uuid4()))
 
     assert released == 0.0
-    # sprint was never fetched (no second .get) — guarded before any refund
-    session.get.assert_awaited_once()
+    # asset + event fetched, but sprint never (guarded before any refund)
+    assert session.get.await_count == 2
 
 
 @pytest.mark.asyncio
 async def test_release_never_drives_spend_negative() -> None:
+    asset = _mock_asset()
     event = MagicMock(estimated_usd=5.0, actual_usd=None)
     sprint = MagicMock(spent_usd=2.0)  # reserved more than current spend
+    ctx, _session = _release_ctx(asset, event, sprint)
 
-    asset = MagicMock()
-    asset.provider_usage_event_id = uuid.uuid4()
-    asset.sprint_id = uuid.uuid4()
-
-    session = _release_session(event, sprint)
-    released = await release_reserved_budget(session, asset)
+    with patch(_GET_SESSION, return_value=ctx):
+        released = await release_reserved_budget(str(uuid.uuid4()))
 
     assert released == 5.0
     assert sprint.spent_usd == 0.0  # floored at zero, not negative
+
+
+@pytest.mark.asyncio
+async def test_release_swallows_errors_and_returns_zero() -> None:
+    """Best-effort: a DB error must not propagate out of the poll workflow."""
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(side_effect=RuntimeError("db gone"))
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(_GET_SESSION, return_value=ctx):
+        released = await release_reserved_budget(str(uuid.uuid4()))
+
+    assert released == 0.0
