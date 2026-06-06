@@ -1,7 +1,10 @@
 """Provider quota and budget ledger (ADR-0034, Issue #42).
 
-check_provider_budget() enforces a global daily spend cap per provider.
-record_actual_cost()    updates a usage event with the final billed amount.
+check_provider_budget()  enforces a global daily spend cap per provider.
+reconcile_actual_cost()  records the billed cost on completion and corrects
+  sprint spend by the estimate→actual delta (ADR-0039 #5).
+release_reserved_budget() returns a failed/timed-out generation's reserved
+  estimate to the sprint budget.
 get_provider_daily_summary() returns today's per-provider totals for the
   get_provider_usage_summary tool.
 """
@@ -11,6 +14,7 @@ import logging
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Asset, ProviderUsageEvent, Sprint
 from vos_studio_mcp.config.env import get_settings
@@ -97,28 +101,75 @@ async def check_provider_budget(
     return str(event.id)
 
 
-async def record_actual_cost(event_id: str, actual_usd: float) -> None:
-    """Update a usage event with the final billed amount.
+async def _lock_usage_event(
+    session: AsyncSession, event_id: uuid.UUID
+) -> ProviderUsageEvent | None:
+    """Fetch a usage event under ``SELECT … FOR UPDATE`` to serialize the
+    estimate→actual / refund transition against concurrent poll tasks."""
+    result = await session.execute(
+        select(ProviderUsageEvent).where(ProviderUsageEvent.id == event_id).with_for_update()
+    )
+    return result.scalar_one_or_none()
 
-    Called by the poll task when a generation job completes and the provider
-    returns the actual cost.  Best-effort: logs and swallows errors so it
-    never blocks the primary workflow.
+
+async def _lock_sprint(session: AsyncSession, sprint_id: uuid.UUID) -> Sprint | None:
+    """Fetch a sprint under ``SELECT … FOR UPDATE`` so the spend adjustment can
+    never lose an update against the request path (which also locks the row)."""
+    result = await session.execute(
+        select(Sprint).where(Sprint.id == sprint_id).with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
+async def reconcile_actual_cost(asset_id: str, provider_cost_usd: float | None) -> float:
+    """Reconcile a completed generation's actual billed cost (ADR-0039 #5).
+
+    The request path reserves the *estimated* cost by incrementing
+    ``Sprint.spent_usd`` and writing a ``ProviderUsageEvent`` with
+    ``estimated_usd``. When the generation completes the real cost is known:
+    this records it on the ledger event (``actual_usd``) and corrects sprint
+    spend by the delta (``actual - estimate``) so sprint-level accounting stays
+    truthful — closing the financial loop (estimated → billed → reserved →
+    truly consumed).
+
+    When the provider does not report a billed cost (``provider_cost_usd`` is
+    ``None``) the request-time estimate is affirmed as the actual spend (delta
+    ``0``). This still corrects the ledger, whose ``actual_usd`` previously read
+    ``0.0`` for every completed event and under-reported true spend.
+
+    Runs over the **privileged connection** (``provider_usage_events`` RLS, the
+    poll worker sets no tenant context). Idempotent: guarded by
+    ``actual_usd IS NULL`` so a re-poll or an already-reconciled event is a
+    no-op. Best-effort: swallows and logs errors so it never blocks the poll
+    workflow. Returns the reconciled actual cost (``0.0`` when nothing to do).
     """
     try:
         async with get_privileged_session() as session:
-            event: ProviderUsageEvent | None = await session.get(
-                ProviderUsageEvent, uuid.UUID(event_id)
-            )
-            if event is None:
-                log.warning("budget_guard.event_not_found", extra={"event_id": event_id})
-                return
-            event.actual_usd = actual_usd
+            asset: Asset | None = await session.get(Asset, uuid.UUID(asset_id))
+            if asset is None or asset.provider_usage_event_id is None:
+                return 0.0
+            # Lock the ledger row so a concurrent reconcile/release (Celery
+            # redelivery or overlapping polls) serializes here: the second caller
+            # blocks until the first commits, then sees actual_usd set and no-ops.
+            event = await _lock_usage_event(session, asset.provider_usage_event_id)
+            if event is None or event.actual_usd is not None:
+                return 0.0  # not linked, or already reconciled — idempotent no-op
+            reserved = event.estimated_usd or 0.0
+            actual = provider_cost_usd if provider_cost_usd is not None else reserved
+            event.actual_usd = actual
+            delta = actual - reserved
+            if delta and asset.sprint_id is not None:
+                sprint = await _lock_sprint(session, asset.sprint_id)
+                if sprint is not None:
+                    sprint.spent_usd = max(0.0, sprint.spent_usd + delta)
             await session.commit()
+            return actual
     except Exception as exc:  # noqa: BLE001
         log.warning(
-            "budget_guard.actual_cost_update_failed",
-            extra={"event_id": event_id, "reason": str(exc)},
+            "budget_guard.reconcile_failed",
+            extra={"asset_id": asset_id, "reason": str(exc)},
         )
+        return 0.0
 
 
 async def release_reserved_budget(asset_id: str) -> float:
@@ -145,16 +196,16 @@ async def release_reserved_budget(asset_id: str) -> float:
             asset: Asset | None = await session.get(Asset, uuid.UUID(asset_id))
             if asset is None or asset.provider_usage_event_id is None:
                 return 0.0
-            event: ProviderUsageEvent | None = await session.get(
-                ProviderUsageEvent, asset.provider_usage_event_id
-            )
+            # Lock the ledger row so a concurrent release/reconcile serializes
+            # here and the refund is applied at most once (see reconcile note).
+            event = await _lock_usage_event(session, asset.provider_usage_event_id)
             if event is None or event.actual_usd is not None:
                 return 0.0  # not linked, or already reconciled — idempotent no-op
             reserved = event.estimated_usd or 0.0
             # Mark reconciled (failed → no actual charge) to make this once-only.
             event.actual_usd = 0.0
             if reserved and asset.sprint_id is not None:
-                sprint: Sprint | None = await session.get(Sprint, asset.sprint_id)
+                sprint = await _lock_sprint(session, asset.sprint_id)
                 if sprint is not None:
                     sprint.spent_usd = max(0.0, sprint.spent_usd - reserved)
             await session.commit()

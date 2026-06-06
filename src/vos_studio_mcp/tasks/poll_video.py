@@ -7,7 +7,7 @@ from typing import Any
 from celery.exceptions import MaxRetriesExceededError
 
 from vos_studio_mcp.services.audit_service import AuditAction, AuditResult, emit_audit_event
-from vos_studio_mcp.services.budget_guard import record_actual_cost, release_reserved_budget
+from vos_studio_mcp.services.budget_guard import reconcile_actual_cost, release_reserved_budget
 from vos_studio_mcp.services.database import (
     get_asset_notification_context,
     get_asset_with_client,
@@ -82,13 +82,17 @@ async def _check_and_update(asset_id: str) -> str:
             )
             if job_status.media_url:
                 upload_video_to_storage.delay(asset_id, job_status.media_url)
-            # Fix #64: Reconcile the budget ledger by recording that the
-            # generation completed. Record 0.0 as the actual cost (meaning
-            # "completed; actual matches estimate"). record_actual_cost is
-            # best-effort and swallows any errors so it never blocks the
-            # primary workflow.
+            # Reconcile the budget ledger now the real cost is known: record the
+            # provider-billed cost (or affirm the estimate when the provider does
+            # not report one) and correct sprint spend by the delta (ADR-0039 #5).
+            # Runs over the privileged connection; idempotent; best-effort so it
+            # never blocks the primary workflow.
             if usage_event_id is not None:
-                await record_actual_cost(str(usage_event_id), 0.0)
+                reconciled = await reconcile_actual_cost(asset_id, job_status.actual_cost_usd)
+                log.info(
+                    "generation.cost_reconciled",
+                    extra={"asset_id": asset_id, "actual_usd": reconciled},
+                )
             await emit_audit_event(
                 action=AuditAction.POLL_JOB_COMPLETED,
                 entity_type="asset",

@@ -12,16 +12,16 @@ Last reviewed: 2026-06-05
 > |---|---------|--------|
 > | 1 | Creative domain under-modeled (stage/kind/lineage) | **Done** — migration `0013_add_asset_stage_kind_lineage` + ADR-0037; `Asset` is stage/kind/lineage-aware |
 > | 2 | Implicit state machines | **Done** — `generation_status` and `storage_status` are separate (ADR-0031); status/next-action are storage-aware (`_resolve_summary`/`_resolve_next_action`) |
-> | 3 | Concentrated generation orchestration | **Partial** — `request_api_video()` is still one method but is now concurrency-safe; further decomposition is optional/low-priority |
+> | 3 | Concentrated generation orchestration | **Done** — `request_api_video()` is now orchestration-only over explicit single-responsibility steps (`_build_generation_params`, `_validate_sprint_budget`, `_submit_and_register`, `_emit_request_audit`) and remains concurrency-safe |
 > | 4 | BrandKit too loose | **Done** — migration `0014_add_brand_kit_asset_lock` + ADR-0038 (Accepted) |
-> | 5 | Financial correctness split across layers | **In progress** — request-time reservation, `provider_usage_event` linkage and `record_actual_cost` exist; failed/timed-out generations now **release** the reserved estimate from `sprint.spent_usd` (`release_reserved_budget`). Reconciling *actual* provider-billed cost into sprint spend remains future work (depends on adapters reporting actual cost) |
+> | 5 | Financial correctness split across layers | **Done** — request-time reservation + `provider_usage_event` linkage; failed/timed-out generations **release** the reserved estimate (`release_reserved_budget`); completion **reconciles** the actual billed cost into the ledger and corrects sprint spend by the estimate→actual delta (`reconcile_actual_cost`, `JobStatus.actual_cost_usd`). When a provider reports no billed cost the estimate is affirmed as actual |
 > | 6 | Concurrency-unsafe budget enforcement | **Done** — `request_api_video()` re-validates under `SELECT … FOR UPDATE` (Fix #67) |
 >
 > **Phase status:** Phase 1 (domain correction) — complete. Phase 2 (workflow
-> correction) — mostly complete; remaining work is actual-cost reconciliation in
-> #5 and the optional decomposition in #3. Phase 3 (protocol-native refinement)
-> — partially delivered (MCP resources/prompts, provider-native MCP via
-> ADR-0044); ranking/learning and production auth hardening are ongoing.
+> correction) — complete: actual-cost reconciliation (#5) and the generation
+> orchestration decomposition (#3) are now delivered. Phase 3 (protocol-native
+> refinement) — partially delivered (MCP resources/prompts, provider-native MCP
+> via ADR-0044); ranking/learning and production auth hardening are ongoing.
 
 ## Context
 
@@ -124,6 +124,12 @@ The current system tracks:
 - and potentially actual provider cost via the provider usage ledger.
 
 But the request path increments sprint spend using estimated cost, and the completion path does not yet clearly reconcile actual billed cost back into the ledger or sprint-level accounting.
+
+> **Resolved.** The completion path now calls `reconcile_actual_cost`, which
+> records the billed cost on the `provider_usage_event` and corrects
+> `sprint.spent_usd` by the estimate→actual delta. Adapters surface the billed
+> amount through `JobStatus.actual_cost_usd`; when a provider does not report
+> one, the request-time estimate is affirmed as the actual spend.
 
 ### 6. Business-rule enforcement is vulnerable to concurrency gaps
 

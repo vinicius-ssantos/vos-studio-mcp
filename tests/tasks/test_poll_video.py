@@ -419,53 +419,79 @@ async def test_mark_status_skips_commit_when_asset_not_found() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Fix #64 — record_actual_cost called on job completion
+# Cost reconciliation on job completion (ADR-0039 #5)
 # ---------------------------------------------------------------------------
 
-_RECORD_ACTUAL_COST = f"{_TASK_MODULE}.record_actual_cost"
+_RECONCILE_ACTUAL_COST = f"{_TASK_MODULE}.reconcile_actual_cost"
 
 
 @pytest.mark.asyncio
-async def test_check_calls_record_actual_cost_when_usage_event_id_set() -> None:
-    """On completion, record_actual_cost must be awaited with the event_id."""
+async def test_check_reconciles_cost_when_usage_event_id_set() -> None:
+    """On completion, reconcile_actual_cost must be awaited by asset_id with the
+    provider-reported cost (None when the provider does not report one)."""
     event_id = "aaaaaaaa-0000-0000-0000-000000000001"
     asset = _mock_asset(status="pending", provider_usage_event_id=event_id)
     adapter = MagicMock()
     adapter.check_job_status = AsyncMock(
         return_value=JobStatus(job_id="gen-123", status="completed", media_url=None)
     )
-    record_actual = AsyncMock()
+    reconcile = AsyncMock(return_value=0.06)
 
     with (
         patch(_GET_SESSION, return_value=_session_ctx(asset)),
         patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
         patch(_GET_ADAPTER, return_value=adapter),
-        patch(_RECORD_ACTUAL_COST, record_actual),
+        patch(_RECONCILE_ACTUAL_COST, reconcile),
     ):
         from vos_studio_mcp.tasks.poll_video import _check_and_update
         result = await _check_and_update("asset-001")
 
     assert result == "done"
-    record_actual.assert_awaited_once_with(event_id, 0.0)
+    reconcile.assert_awaited_once_with("asset-001", None)
 
 
 @pytest.mark.asyncio
-async def test_check_skips_record_actual_cost_when_no_usage_event_id() -> None:
-    """If provider_usage_event_id is None, record_actual_cost must not be called."""
-    asset = _mock_asset(status="pending", provider_usage_event_id=None)
+async def test_check_reconciles_with_provider_reported_cost() -> None:
+    """When the provider reports a billed cost, it is forwarded to reconciliation."""
+    event_id = "aaaaaaaa-0000-0000-0000-000000000001"
+    asset = _mock_asset(status="pending", provider_usage_event_id=event_id)
     adapter = MagicMock()
     adapter.check_job_status = AsyncMock(
-        return_value=JobStatus(job_id="gen-123", status="completed", media_url=None)
+        return_value=JobStatus(
+            job_id="gen-123", status="completed", media_url=None, actual_cost_usd=0.18
+        )
     )
-    record_actual = AsyncMock()
+    reconcile = AsyncMock(return_value=0.18)
 
     with (
         patch(_GET_SESSION, return_value=_session_ctx(asset)),
         patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
         patch(_GET_ADAPTER, return_value=adapter),
-        patch(_RECORD_ACTUAL_COST, record_actual),
+        patch(_RECONCILE_ACTUAL_COST, reconcile),
     ):
         from vos_studio_mcp.tasks.poll_video import _check_and_update
         await _check_and_update("asset-001")
 
-    record_actual.assert_not_awaited()
+    reconcile.assert_awaited_once_with("asset-001", 0.18)
+
+
+@pytest.mark.asyncio
+async def test_check_skips_reconcile_when_no_usage_event_id() -> None:
+    """If provider_usage_event_id is None, reconcile_actual_cost must not be called."""
+    asset = _mock_asset(status="pending", provider_usage_event_id=None)
+    adapter = MagicMock()
+    adapter.check_job_status = AsyncMock(
+        return_value=JobStatus(job_id="gen-123", status="completed", media_url=None)
+    )
+    reconcile = AsyncMock()
+
+    with (
+        patch(_GET_SESSION, return_value=_session_ctx(asset)),
+        patch(_GET_ASSET, new_callable=AsyncMock, return_value=(asset, "cli-001")),
+        patch(_GET_ADAPTER, return_value=adapter),
+        patch(_RECONCILE_ACTUAL_COST, reconcile),
+    ):
+        from vos_studio_mcp.tasks.poll_video import _check_and_update
+        await _check_and_update("asset-001")
+
+    reconcile.assert_not_awaited()

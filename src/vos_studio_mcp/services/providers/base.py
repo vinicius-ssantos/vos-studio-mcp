@@ -72,6 +72,10 @@ class JobStatus:
     progress: float | None = None   # 0.0–1.0 if provider supports it
     error: str | None = None
     media_url: str | None = None    # populated by provider when status is "completed"
+    # Provider-reported billed cost when the status response carries it. Left
+    # None when the provider does not return a cost; reconciliation then affirms
+    # the request-time estimate as the actual spend (ADR-0039 #5).
+    actual_cost_usd: float | None = None
 
 
 @runtime_checkable
