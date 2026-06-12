@@ -87,10 +87,10 @@ jobs:
 
       # Run the full test suite.
       #
-      # DATABASE_URL    → superuser; used by webhook integration test fixtures
-      #                   (which need SET LOCAL row_security = off to insert data)
+      # DATABASE_URL   → superuser; used by webhook integration test fixtures
+      #                  (which need SET LOCAL row_security = off to insert data)
       # APP_DATABASE_URL → vos_app non-superuser; used by RLS isolation tests
-      #                   to verify that policies are actually enforced.
+      #                  to verify that policies are actually enforced.
       - name: Test
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:password@localhost:5432/postgres
@@ -109,3 +109,38 @@ jobs:
         with:
           name: coverage-xml
           path: coverage.xml
+
+  ci-self-hosted:
+    name: Lint + typecheck (self-hosted python-ci)
+    if: >
+      github.event_name == 'push' ||
+      contains(github.event.pull_request.labels.*.name, 'run-self-hosted')
+    runs-on: [self-hosted, linux, x64, python-ci]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Show runner context
+        run: |
+          echo "runner.name=${RUNNER_NAME}"
+          echo "runner.os=${RUNNER_OS}"
+          echo "runner.arch=${RUNNER_ARCH}"
+          python --version
+
+      - name: Install uv
+        run: |
+          python -m venv .runner-tools
+          .runner-tools/bin/python -m pip install --upgrade pip uv
+          echo "$PWD/.runner-tools/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Lint
+        run: uv run ruff check src/ tests/
+
+      - name: Typecheck
+        run: uv run mypy src/
